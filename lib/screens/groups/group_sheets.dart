@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:image_picker/image_picker.dart';
 
 import '../../core/dates.dart';
 import '../../core/money.dart';
@@ -12,11 +13,13 @@ import '../../data/models.dart';
 import '../../data/remote/auth_service.dart';
 import '../../data/remote/friends_service.dart';
 import '../../data/remote/notices_service.dart';
+import '../../data/remote/receipts.dart';
 import '../../data/store.dart';
 import '../../ui/icons.dart';
 import '../../ui/sheet.dart';
 import '../../ui/tokens.dart';
 import '../../ui/widgets.dart';
+import 'expense_sheet.dart';
 import 'icon_picker.dart';
 import 'recurring_sheets.dart';
 import 'split_editor.dart';
@@ -44,6 +47,14 @@ Future<void> showAddExpense(BuildContext context, Group group, {Expense? existin
 /// needs the inset as padding, which is all this is.
 double _keyboardInset(BuildContext context) => MediaQuery.viewInsetsOf(context).bottom;
 
+/// Adding an expense, in three short steps: what it was and how much; who paid
+/// and how it splits; the bill and a note.
+///
+/// One long form put nine decisions on one screen when most expenses need two
+/// of them. The defaults — you paid, today, split equally between everybody —
+/// are right most of the time, so "Add it" sits on every step and the first
+/// step says what those defaults are. The other steps are there for the times
+/// they are wrong, or there is a bill to keep.
 class _ExpenseSheet extends StatefulWidget {
   const _ExpenseSheet({required this.group, this.existing});
 
@@ -62,6 +73,15 @@ class _ExpenseSheetState extends State<_ExpenseSheet> {
 
   late final SplitModel _split;
   late DateTime _date;
+
+  static const _steps = ['What', 'Who paid', 'Bill & note'];
+  int _step = 0;
+
+  /// A photo chosen here, uploaded once the expense is saved.
+  Uint8List? _bill;
+
+  /// The bill already on an expense being edited, taken off on save.
+  bool _dropBill = false;
 
   /// Offered only when adding: turning an expense that already exists into a
   /// schedule would leave the two silently out of step.
@@ -108,7 +128,22 @@ class _ExpenseSheetState extends State<_ExpenseSheet> {
     super.dispose();
   }
 
-  bool get _valid => _description.text.trim().isNotEmpty && _amount.amount != null && _split.isValid;
+  bool get _basicsDone => _description.text.trim().isNotEmpty && _amount.amount != null;
+
+  bool get _valid => _basicsDone && _split.isValid;
+
+  /// Whether [step] can be shown yet. The split has nothing to divide until
+  /// there is an amount, so the later steps wait for the first.
+  bool _canReach(int step) => step == 0 || _basicsDone;
+
+  void _go(int step) {
+    if (step == _step || !_canReach(step)) return;
+    // The keyboard covered half the split. It comes back when a field is
+    // tapped.
+    FocusScope.of(context).unfocus();
+    HapticFeedback.selectionClick();
+    setState(() => _step = step);
+  }
 
   /// The rupee figure, when what was typed had paise in it.
   int? get _rounded {
@@ -120,8 +155,10 @@ class _ExpenseSheetState extends State<_ExpenseSheet> {
 
   void _save() {
     final store = context.readStore;
+    final overlay = Overlay.of(context, rootOverlay: true);
     final existing = widget.existing;
     final note = _note.text.trim();
+    final String expenseId;
 
     if (existing != null) {
       // Kept so the notice can say what actually moved: "₹500 → ₹5,000" is the
@@ -144,17 +181,25 @@ class _ExpenseSheetState extends State<_ExpenseSheet> {
         ..note = note.isEmpty ? null : note
         ..date = _date;
       store.updateExpense(widget.group, existing, before: before);
+      final dropped = existing.receipt;
+      if (_dropBill && dropped != null) {
+        store.removeReceipt(widget.group, existing);
+        Receipts.delete(dropped);
+      }
+      expenseId = existing.id;
     } else {
-      store.addExpense(
-        widget.group,
-        description: _description.text.trim(),
-        amount: _amount.amount!,
-        payerId: _split.payerId,
-        shares: _split.shares,
-        method: _split.method,
-        note: note,
-        date: _date,
-      );
+      expenseId = store
+          .addExpense(
+            widget.group,
+            description: _description.text.trim(),
+            amount: _amount.amount!,
+            payerId: _split.payerId,
+            shares: _split.shares,
+            method: _split.method,
+            note: note,
+            date: _date,
+          )
+          .id;
       if (_repeats) {
         store.addRecurring(
           widget.group,
@@ -167,6 +212,9 @@ class _ExpenseSheetState extends State<_ExpenseSheet> {
           startsOn: _frequency.next(_date),
         );
       }
+    }
+    if (_bill case final bytes?) {
+      attachBillLater(store, overlay, widget.group.id, expenseId, bytes);
     }
     HapticFeedback.mediumImpact();
     Navigator.of(context).pop();
@@ -183,89 +231,331 @@ class _ExpenseSheetState extends State<_ExpenseSheet> {
     if (picked != null && mounted) setState(() => _date = picked);
   }
 
+  Future<void> _pickBill(ImageSource source) async {
+    final bytes = await pickBillPhoto(context, source);
+    if (bytes == null || !mounted) return;
+    HapticFeedback.selectionClick();
+    setState(() => _bill = bytes);
+  }
+
+  String _when(MullStore store) =>
+      daysBetween(_date, store.now()) == 0 ? 'Today' : shortDateWithYear(_date, store.now());
+
+  /// What "Add it" will record from the first step, in one line: the choices
+  /// nobody has been asked about yet, said out loud.
+  String _defaults(MullStore store) {
+    final payer = widget.group.memberById(_split.payerId);
+    final everyone = _split.included.length == widget.group.members.length;
+    return [
+      payer == null ? 'Someone paid' : '${store.shortName(payer)} paid',
+      switch (_split.method) {
+        SplitMethod.equal when everyone => 'split equally',
+        SplitMethod.equal => 'split between ${_split.included.length}',
+        SplitMethod.exact => 'exact amounts',
+        SplitMethod.shares => 'by shares',
+        SplitMethod.percent => 'by percentage',
+      },
+      _when(store).toLowerCase(),
+    ].join(' · ');
+  }
+
   @override
   Widget build(BuildContext context) {
+    final keyboardUp = MediaQuery.viewInsetsOf(context).bottom > 0;
+    final adding = widget.existing == null;
+    final last = _step == _steps.length - 1;
+    final finish = adding ? 'Add it' : 'Save';
+
+    return PopScope(
+      // Back steps back, the way it does everywhere else in a flow. Close
+      // still closes.
+      canPop: _step == 0,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) _go(_step - 1);
+      },
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _StepBar(
+            title: adding ? 'Add an expense' : 'Edit expense',
+            steps: _steps,
+            index: _step,
+            reachable: _canReach,
+            onTap: _go,
+          ),
+          Expanded(
+            child: AnimatedSwitcher(
+              duration: const Duration(milliseconds: 240),
+              switchInCurve: Curves.easeOutCubic,
+              switchOutCurve: Curves.easeInCubic,
+              // The default centres a short step in the sheet's height.
+              layoutBuilder: (current, previous) => Stack(
+                alignment: Alignment.topCenter,
+                children: [...previous, ?current],
+              ),
+              transitionBuilder: (child, animation) => FadeTransition(
+                opacity: animation,
+                child: SlideTransition(
+                  position: Tween(begin: const Offset(0, .02), end: Offset.zero).animate(animation),
+                  child: child,
+                ),
+              ),
+              child: KeyedSubtree(
+                key: ValueKey(_step),
+                child: SingleChildScrollView(
+                  physics: const BouncingScrollPhysics(),
+                  padding: EdgeInsets.fromLTRB(30, 12, 30, 24 + _keyboardInset(context)),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: switch (_step) {
+                      0 => _whatStep(),
+                      1 => _whoStep(),
+                      _ => _billStep(),
+                    },
+                  ),
+                ),
+              ),
+            ),
+          ),
+          Padding(
+            padding: EdgeInsets.fromLTRB(20, 8, 20, keyboardUp ? 4 : 30),
+            child: last
+                ? PillButton(finish, onTap: _valid ? _save : null)
+                : Row(
+                    children: [
+                      Expanded(
+                        child: SecondaryButton(
+                          'Next',
+                          onTap: _canReach(_step + 1) && (_step == 0 || _split.isValid) ? () => _go(_step + 1) : null,
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(child: PillButton(finish, onTap: _valid ? _save : null)),
+                    ],
+                  ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ------------------------------------------------- 1 of 3: what and how much
+
+  List<Widget> _whatStep() {
     final c = context.c;
     final store = context.store;
-    final keyboardUp = MediaQuery.viewInsetsOf(context).bottom > 0;
+    return [
+      BigField(
+        controller: _description,
+        autofocus: widget.existing == null && _description.text.isEmpty,
+        hint: 'What was it?',
+        textInputAction: TextInputAction.next,
+        onSubmitted: (_) => _amountFocus.requestFocus(),
+      ),
+      const SizedBox(height: 22),
+      BigField(
+        controller: _amount,
+        focusNode: _amountFocus,
+        numeric: true,
+        hint: '₹0',
+        trailing: Text('total bill', style: ranade(11.5, color: c.ink3)),
+        // Mull keeps whole rupees on purpose — nobody settles 33.33 over UPI —
+        // but rounding somebody's 499.50 up without a word is the app changing
+        // a number they typed.
+        help: _rounded == null ? null : Text('Rounded to ${inr(_rounded!)}. Mull keeps whole rupees.'),
+      ),
+      const SizedBox(height: 22),
+      // The rest of the expense as it stands. Tapping it is the same as Next.
+      Pressable(
+        onTap: _canReach(1) ? () => _go(1) : null,
+        scale: .99,
+        semanticLabel: '${_defaults(store)}. Change',
+        child: Row(
+          children: [
+            Expanded(child: Text(_defaults(store), style: ranade(13, color: c.ink2))),
+            Text('Change', style: ranade(13, color: _canReach(1) ? c.ink : c.ink3)),
+            const SizedBox(width: 4),
+            MullIcon(MullGlyph.chevronRight, size: 13, color: c.ink3, strokeWidth: 1.7),
+          ],
+        ),
+      ),
+    ];
+  }
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        SheetHeader(widget.existing == null ? 'Add an expense' : 'Edit expense'),
-        Expanded(
-          child: SingleChildScrollView(
-            physics: const BouncingScrollPhysics(),
-            padding: EdgeInsets.fromLTRB(30, 12, 30, 24 + _keyboardInset(context)),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                BigField(
-                  controller: _description,
-                  autofocus: widget.existing == null,
-                  hint: 'What was it?',
-                  textInputAction: TextInputAction.next,
-                  onSubmitted: (_) => _amountFocus.requestFocus(),
-                ),
-                const SizedBox(height: 22),
-                BigField(
-                  controller: _amount,
-                  focusNode: _amountFocus,
-                  numeric: true,
-                  hint: '₹0',
-                  trailing: Text('total bill', style: ranade(11.5, color: c.ink3)),
-                  // Mull keeps whole rupees on purpose — nobody settles 33.33
-                  // over UPI — but rounding somebody's 499.50 up without a
-                  // word is the app changing a number they typed.
-                  help: _rounded == null ? null : Text('Rounded to ${inr(_rounded!)}. Mull keeps whole rupees.'),
-                ),
-                const SizedBox(height: 18),
-                _RowButton(
-                  label: 'When',
-                  value: daysBetween(_date, store.now()) == 0 ? 'Today' : shortDateWithYear(_date, store.now()),
-                  onTap: _pickDate,
-                ),
-                const SizedBox(height: 26),
-                SplitFields(model: _split),
-                const SizedBox(height: 22),
-                BigField(
-                  controller: _note,
-                  size: 16,
-                  multiline: true,
-                  hint: 'Note (optional)',
-                  capitalization: TextCapitalization.sentences,
-                ),
-                if (widget.existing == null) ...[
-                  const SizedBox(height: 24),
-                  CheckRow(
-                    on: _repeats,
-                    label: 'This happens again',
-                    onTap: () => setState(() => _repeats = !_repeats),
-                    help:
-                        'Rent, wifi, the maid. Mull puts it on a schedule and asks '
-                        'when it comes round. It never adds one behind your back '
-                        'unless you tell it to.',
-                  ),
-                  if (_repeats) ...[
-                    const SizedBox(height: 16),
-                    _FrequencyPicker(
-                      value: _frequency,
-                      onChanged: (f) => setState(() => _frequency = f),
-                    ),
-                    const SizedBox(height: 10),
-                    Text(
-                      'Next one ${relativeDay(_frequency.next(_date), store.now())}.',
-                      style: ranade(11.5, color: c.ink3),
-                    ),
-                  ],
-                ],
-              ],
+  // ------------------------------------------ 2 of 3: when, who paid, the split
+
+  List<Widget> _whoStep() {
+    final c = context.c;
+    final store = context.store;
+    return [
+      _RowButton(label: 'When', value: _when(store), onTap: _pickDate),
+      const SizedBox(height: 26),
+      SplitFields(model: _split),
+      if (widget.existing == null) ...[
+        const SizedBox(height: 28),
+        CheckRow(
+          on: _repeats,
+          label: 'This happens again',
+          onTap: () => setState(() => _repeats = !_repeats),
+          help:
+              'Rent, wifi, the maid. Mull puts it on a schedule and asks when '
+              'it comes round. It never adds one behind your back unless you '
+              'tell it to.',
+        ),
+        if (_repeats) ...[
+          const SizedBox(height: 16),
+          _FrequencyPicker(
+            value: _frequency,
+            onChanged: (f) => setState(() => _frequency = f),
+          ),
+          const SizedBox(height: 10),
+          Text(
+            'Next one ${relativeDay(_frequency.next(_date), store.now())}.',
+            style: ranade(11.5, color: c.ink3),
+          ),
+        ],
+      ],
+    ];
+  }
+
+  // ------------------------------------------------ 3 of 3: the bill and a note
+
+  List<Widget> _billStep() {
+    final c = context.c;
+    final existing = widget.existing;
+    final youPaid = existing == null || existing.payerId == widget.group.you?.id;
+    final kept = _dropBill ? null : existing?.receipt;
+
+    return [
+      const Eyebrow('Bill', size: 10.5, tracking: .18, padding: EdgeInsets.only(bottom: 12)),
+      if (_bill case final bytes?) ...[
+        ClipRRect(
+          borderRadius: BorderRadius.circular(20),
+          child: Container(
+            height: 220,
+            color: c.quiet,
+            child: Image.memory(bytes, fit: BoxFit.cover, width: double.infinity),
+          ),
+        ),
+        Align(
+          alignment: Alignment.centerLeft,
+          child: Pressable(
+            onTap: () => setState(() => _bill = null),
+            child: Padding(
+              padding: const EdgeInsets.only(top: 12),
+              child: Text('Remove the photo', style: ranade(13, color: c.ink3)),
             ),
           ),
         ),
+      ] else if (kept != null)
+        ReceiptThumb(
+          receiptKey: kept,
+          // Only the payer takes a bill off, as on the expense itself.
+          onRemove: youPaid ? () => setState(() => _dropBill = true) : null,
+        )
+      else ...[
+        Row(
+          children: [
+            Expanded(
+              child: InlineButton(
+                'Take a photo',
+                height: 48,
+                expand: true,
+                filled: false,
+                onTap: () => _pickBill(ImageSource.camera),
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: InlineButton(
+                'From photos',
+                height: 48,
+                expand: true,
+                filled: false,
+                onTap: () => _pickBill(ImageSource.gallery),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 10),
+        Text(
+          'The receipt, or a screenshot of the order. Everyone in the split can see it.',
+          style: ranade(11.5, color: c.ink3),
+        ),
+      ],
+      const SizedBox(height: 30),
+      BigField(
+        controller: _note,
+        size: 16,
+        multiline: true,
+        hint: 'Note (optional)',
+        capitalization: TextCapitalization.sentences,
+      ),
+    ];
+  }
+}
+
+/// The sheet's title, where it is in the three steps, and the close button.
+/// Every step is a tap away once there is an amount, so an edit to the split
+/// does not mean walking through the description first.
+class _StepBar extends StatelessWidget {
+  const _StepBar({
+    required this.title,
+    required this.steps,
+    required this.index,
+    required this.reachable,
+    required this.onTap,
+  });
+
+  final String title;
+  final List<String> steps;
+  final int index;
+  final bool Function(int step) reachable;
+  final ValueChanged<int> onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.c;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        SheetHeader(title),
         Padding(
-          padding: EdgeInsets.fromLTRB(20, 8, 20, keyboardUp ? 4 : 30),
-          child: PillButton(widget.existing == null ? 'Add it' : 'Save', onTap: _valid ? _save : null),
+          padding: const EdgeInsets.fromLTRB(30, 4, 30, 6),
+          child: Row(
+            children: [
+              for (var i = 0; i < steps.length; i++) ...[
+                if (i > 0) const SizedBox(width: 6),
+                Expanded(
+                  child: Pressable(
+                    onTap: reachable(i) ? () => onTap(i) : null,
+                    haptic: false,
+                    semanticLabel: 'Step ${i + 1} of ${steps.length}, ${steps[i]}',
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        AnimatedContainer(
+                          duration: const Duration(milliseconds: 240),
+                          height: 3,
+                          decoration: BoxDecoration(
+                            color: i <= index ? c.ink : c.line,
+                            borderRadius: BorderRadius.circular(2),
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          steps[i],
+                          style: ranade(12, color: i == index ? c.ink : c.ink3),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ],
+          ),
         ),
       ],
     );

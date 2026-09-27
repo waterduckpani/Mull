@@ -47,27 +47,12 @@ class _ExpenseDetailState extends State<_ExpenseDetail> {
     final source = await _pickSource(context);
     if (source == null || !mounted) return;
     final store = context.readStore;
-    final XFile? photo;
-    try {
-      // A bill is text on paper. 1600px keeps the small print legible and the
-      // file a few hundred kilobytes.
-      photo = await ImagePicker().pickImage(source: source, maxWidth: 1600, maxHeight: 1600, imageQuality: 72);
-    } on PlatformException {
-      if (mounted) {
-        Toast.show(
-          context,
-          source == ImageSource.camera
-              ? 'Mull needs the camera. Allow it in Settings.'
-              : 'Mull needs your photos. Allow it in Settings.',
-        );
-      }
-      return;
-    }
+    final photo = await pickBillPhoto(context, source);
     if (photo == null || !mounted) return;
 
     setState(() => _uploading = true);
     try {
-      final key = await Receipts.save(group, expense, await photo.readAsBytes());
+      final key = await Receipts.save(group, expense, photo);
       store.attachReceipt(group, expense, key);
       HapticFeedback.mediumImpact();
     } on ReceiptException catch (e) {
@@ -167,7 +152,7 @@ class _ExpenseDetailState extends State<_ExpenseDetail> {
 
                 const Eyebrow('Bill', size: 10.5, tracking: .18, padding: EdgeInsets.only(top: 30, bottom: 12)),
                 if (expense.receipt case final key?)
-                  _ReceiptThumb(
+                  ReceiptThumb(
                     receiptKey: key,
                     onRemove: youPaid ? () => _removeBill(group, expense) : null,
                   )
@@ -267,6 +252,61 @@ class _BillLine extends StatelessWidget {
   }
 }
 
+/// A photo of a bill from [source], sized for reading small print. Null when
+/// nothing was chosen, or the phone said no — which gets a toast saying where
+/// to allow it.
+Future<Uint8List?> pickBillPhoto(BuildContext context, ImageSource source) async {
+  final XFile? photo;
+  try {
+    // A bill is text on paper. 1600px keeps the small print legible and the
+    // file a few hundred kilobytes.
+    photo = await ImagePicker().pickImage(source: source, maxWidth: 1600, maxHeight: 1600, imageQuality: 72);
+  } on PlatformException {
+    if (context.mounted) {
+      Toast.show(
+        context,
+        source == ImageSource.camera
+            ? 'Mull needs the camera. Allow it in Settings.'
+            : 'Mull needs your photos. Allow it in Settings.',
+      );
+    }
+    return null;
+  }
+  return photo?.readAsBytes();
+}
+
+/// Uploads [bytes] as the bill for an expense that has just been saved, after
+/// the sheet that saved it has closed.
+///
+/// Adding an expense never waits on the network: the money is what the others
+/// need to see, and the photo follows a moment later. If the upload fails the
+/// expense stays, and the toast says where to try again.
+Future<void> attachBillLater(
+  MullStore store,
+  OverlayState overlay,
+  String groupId,
+  String expenseId,
+  Uint8List bytes,
+) async {
+  Expense? find() => store.groupById(groupId)?.expenses.where((e) => e.id == expenseId).firstOrNull;
+  final group = store.groupById(groupId);
+  final expense = find();
+  if (group == null || expense == null) return;
+  try {
+    final key = await Receipts.save(group, expense, bytes);
+    // Deleted, or the group left, while the photo was on its way up.
+    final still = find();
+    final now = store.groupById(groupId);
+    if (still == null || now == null) {
+      Receipts.delete(key);
+      return;
+    }
+    store.attachReceipt(now, still, key);
+  } on ReceiptException catch (e) {
+    Toast.showOn(overlay, '${e.message} Open the expense to add it again.');
+  }
+}
+
 /// Camera or library. Asked every time: a bill is as often a screenshot of a
 /// Swiggy order as it is paper on a table.
 Future<ImageSource?> _pickSource(BuildContext context) => showMullSheet<ImageSource>(
@@ -292,21 +332,21 @@ Future<ImageSource?> _pickSource(BuildContext context) => showMullSheet<ImageSou
 );
 
 /// The bill, small, loading from the phone or the server. Tap for full size.
-class _ReceiptThumb extends StatefulWidget {
-  const _ReceiptThumb({required this.receiptKey, this.onRemove});
+class ReceiptThumb extends StatefulWidget {
+  const ReceiptThumb({super.key, required this.receiptKey, this.onRemove});
 
   final String receiptKey;
   final VoidCallback? onRemove;
 
   @override
-  State<_ReceiptThumb> createState() => _ReceiptThumbState();
+  State<ReceiptThumb> createState() => _ReceiptThumbState();
 }
 
-class _ReceiptThumbState extends State<_ReceiptThumb> {
+class _ReceiptThumbState extends State<ReceiptThumb> {
   late Future<File?> _file = Receipts.load(widget.receiptKey);
 
   @override
-  void didUpdateWidget(_ReceiptThumb old) {
+  void didUpdateWidget(ReceiptThumb old) {
     super.didUpdateWidget(old);
     if (old.receiptKey != widget.receiptKey) _file = Receipts.load(widget.receiptKey);
   }

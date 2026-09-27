@@ -131,6 +131,10 @@ void main() {
     FocusManager.instance.primaryFocus?.unfocus();
     await settle(t);
     await shot(t, '08-add-expense');
+    await tapText(t, 'Next');
+    await shot(t, '08b-add-expense-split');
+    await tapText(t, 'Next');
+    await shot(t, '08c-add-expense-bill');
     await tapText(t, 'Add it');
     await settle(t, 900);
     expect(

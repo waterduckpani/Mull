@@ -983,6 +983,9 @@ class MullStore extends ChangeNotifier {
       recurringId: recurringId,
       note: note?.trim().isEmpty ?? true ? null : note!.trim(),
       date: date ?? now(),
+      // Not the date: an expense back-dated to Tuesday was still written down
+      // just now, and the ledger orders a day's expenses by this.
+      createdAt: now(),
     );
     group.expenses.add(expense);
     _commitGroup(group);
@@ -2009,11 +2012,7 @@ class MullStore extends ChangeNotifier {
 
   /// Everything that happened in the group, newest first.
   List<Object> activity(Group group) =>
-      [...group.expenses, ...group.settlements]..sort((a, b) {
-        final da = a is Expense ? a.date : (a as Settlement).date;
-        final db = b is Expense ? b.date : (b as Settlement).date;
-        return db.compareTo(da);
-      });
+      [...group.expenses, ...group.settlements]..sort((a, b) => newestFirst(ledgerMoment(a), ledgerMoment(b)));
 
   /// Your position across everything at once — the number on the home screen.
   ///

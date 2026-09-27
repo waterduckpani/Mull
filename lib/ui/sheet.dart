@@ -334,9 +334,15 @@ class Toast {
   static OverlayEntry? _entry;
   static Timer? _timer;
 
-  static void show(BuildContext context, String message, {String? action, VoidCallback? onAction}) {
+  static void show(BuildContext context, String message, {String? action, VoidCallback? onAction}) =>
+      showOn(Overlay.of(context, rootOverlay: true), message, action: action, onAction: onAction);
+
+  /// For work that finishes after the screen that started it has gone — a
+  /// bill still uploading once its sheet has closed. Take the overlay while
+  /// the context is alive; the app's root overlay outlives every sheet.
+  static void showOn(OverlayState overlay, String message, {String? action, VoidCallback? onAction}) {
     hide();
-    final overlay = Overlay.of(context, rootOverlay: true);
+    if (!overlay.mounted) return;
     final key = GlobalKey<_ToastViewState>();
     _entry = OverlayEntry(
       builder: (_) => _ToastView(

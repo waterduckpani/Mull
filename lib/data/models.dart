@@ -185,6 +185,25 @@ class Member {
   );
 }
 
+/// Where [item] — an [Expense] or a [Settlement] — sits in time: its day, then
+/// the exact moment within it.
+///
+/// An expense only carries a day once it has been through the server, so every
+/// expense from one day tied on date and fell back to the order they were
+/// fetched in, which is oldest first. The day is what the person chose; the
+/// moment it was written down breaks the tie.
+(DateTime, DateTime) ledgerMoment(Object item) => switch (item) {
+  Expense e => (dayOf(e.date), e.createdAt),
+  Settlement s => (dayOf(s.date.toLocal()), s.date),
+  _ => throw ArgumentError.value(item, 'item', 'not an expense or a settlement'),
+};
+
+/// Sorts [ledgerMoment]s newest first.
+int newestFirst((DateTime, DateTime) a, (DateTime, DateTime) b) {
+  final byDay = b.$1.compareTo(a.$1);
+  return byDay != 0 ? byDay : b.$2.compareTo(a.$2);
+}
+
 /// Something one person paid for on behalf of some of the group.
 class Expense {
   Expense({

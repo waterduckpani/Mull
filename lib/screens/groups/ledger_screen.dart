@@ -37,8 +37,8 @@ class _LedgerScreenState extends State<LedgerScreen> {
     final onExpenses = _tab == 0;
     final settled = store.settledExpenses(group);
 
-    final expenses = [...group.expenses]..sort((a, b) => b.date.compareTo(a.date));
-    final settlements = [...group.settlements]..sort((a, b) => b.date.compareTo(a.date));
+    final expenses = [...group.expenses]..sort((a, b) => newestFirst(ledgerMoment(a), ledgerMoment(b)));
+    final settlements = [...group.settlements]..sort((a, b) => newestFirst(ledgerMoment(a), ledgerMoment(b)));
 
     return MullPage(
       glow: const GlowSpec(size: 430, top: -160, left: -150, right: null),
