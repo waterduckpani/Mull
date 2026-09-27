@@ -1100,21 +1100,82 @@ class MullStore extends ChangeNotifier {
 
   /// Asks whoever paid to attach the bill. Goes to the payer alone: they are
   /// the one holding it.
-  void requestReceipt(Group group, Expense expense) {
-    if (!canRequestReceipt(group, expense)) return;
-    final me = group.you!;
-    expense.receiptRequestedBy = me.id;
-    _commitGroup(group);
-    _tell(
-      Notice(
-        to: _reachable(group, {expense.payerId}),
-        groupId: group.id,
-        kind: NoticeKind.receiptRequested,
-        title: '${_theirNameFor(me)} asked for the bill for ${expense.description}',
-        body: '${inr(expense.amount)} · ${group.isDirect ? 'with you' : group.title}',
-        amount: expense.amount,
-      ),
-    );
+  void requestReceipt(Group group, Expense expense) => requestReceipts([(group, expense)]);
+
+  /// The open expenses [seats] paid that you could ask the bill for — what a
+  /// payment to them is actually for. [seats] maps a group id to their seat
+  /// in it. Expenses already settled are left out: nobody is about to pay for
+  /// those.
+  List<(Group, Expense)> billsToAskFor(Map<String, String> seats) => [
+    for (final entry in seats.entries)
+      if (groupById(entry.key) case final group?)
+        for (final e in _openExpenses(group))
+          if (e.payerId == entry.value && canRequestReceipt(group, e)) (group, e),
+  ];
+
+  /// Open expenses [seats] paid where you have already asked for the bill and
+  /// it has not come yet.
+  List<(Group, Expense)> billsAskedFor(Map<String, String> seats) => [
+    for (final entry in seats.entries)
+      if (groupById(entry.key) case final group?)
+        for (final e in _openExpenses(group))
+          if (e.payerId == entry.value &&
+              e.receipt == null &&
+              e.receiptRequestedBy != null &&
+              e.receiptRequestedBy == group.you?.id)
+            (group, e),
+  ];
+
+  Iterable<Expense> _openExpenses(Group group) {
+    final settled = settledExpenses(group);
+    return group.expenses.where((e) => !settled.contains(e.id));
+  }
+
+  /// Asks for several bills at once, with one notice per ledger rather than
+  /// one per expense: "Sahil asked for 4 bills" is a request, four buzzes in a
+  /// row is nagging. Returns how many were asked for.
+  int requestReceipts(List<(Group, Expense)> items) {
+    final byGroup = <Group, List<Expense>>{};
+    for (final (group, expense) in items) {
+      if (canRequestReceipt(group, expense)) byGroup.putIfAbsent(group, () => []).add(expense);
+    }
+    var asked = 0;
+    for (final MapEntry(key: group, value: expenses) in byGroup.entries) {
+      final me = group.you!;
+      for (final e in expenses) {
+        e.receiptRequestedBy = me.id;
+      }
+      _commitGroup(group);
+      asked += expenses.length;
+      final where = group.isDirect ? 'with you' : group.title;
+      // Grouped by payer, since each notice goes to whoever holds the bill.
+      final payers = {for (final e in expenses) e.payerId};
+      for (final payer in payers) {
+        final theirs = expenses.where((e) => e.payerId == payer).toList();
+        final sum = theirs.fold(0, (s, e) => s + e.amount);
+        _tell(
+          Notice(
+            to: _reachable(group, {payer}),
+            groupId: group.id,
+            kind: NoticeKind.receiptRequested,
+            title: theirs.length == 1
+                ? '${_theirNameFor(me)} asked for the bill for ${theirs.single.description}'
+                : '${_theirNameFor(me)} asked for the bills for ${_listed(theirs.map((e) => e.description))}',
+            body: '${inr(sum)} · $where',
+            amount: sum,
+          ),
+        );
+      }
+    }
+    return asked;
+  }
+
+  /// "Dinner, Cab and 3 more".
+  static String _listed(Iterable<String> names) {
+    final list = names.toList();
+    if (list.length <= 2) return list.join(' and ');
+    if (list.length == 3) return '${list[0]}, ${list[1]} and ${list[2]}';
+    return '${list[0]}, ${list[1]} and ${list.length - 2} more';
   }
 
   /// Puts a photo of the bill on an expense, already uploaded under [key].

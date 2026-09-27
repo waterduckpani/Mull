@@ -23,6 +23,7 @@ import '../ui/icons.dart';
 import '../ui/sheet.dart';
 import '../ui/tokens.dart';
 import '../ui/widgets.dart';
+import 'groups/expense_sheet.dart';
 import 'upi_picker.dart';
 
 /// Answers with the ledger to open, if one was tapped.
@@ -142,6 +143,7 @@ class _PersonSheet extends StatelessWidget {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
+                if (standing.youOwe) AskForBills(seats: standing.seats, name: name),
                 PillButton(
                   standing.theyOweYou ? 'Record what $name paid' : 'Pay $name',
                   onTap: () => _settle(context, standing),

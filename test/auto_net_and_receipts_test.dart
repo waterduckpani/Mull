@@ -165,6 +165,32 @@ void main() {
       expect(store.canRequestReceipt(g, dinner), isFalse);
     });
 
+    test('before paying, every open bill of theirs is one request and one notice', () {
+      final cab = store.addExpense(
+        g,
+        description: 'Cab',
+        amount: 400,
+        payerId: kabir,
+        shares: splitEqually(400, [g.you!.id, kabir]),
+      );
+      sent.clear();
+      final seats = {g.id: kabir};
+      expect(store.billsToAskFor(seats).map((e) => e.$2), [dinner, cab]);
+
+      expect(store.requestReceipts(store.billsToAskFor(seats)), 2);
+      expect(sent.single.title, 'Bharat asked for the bills for Dinner and Cab');
+      expect(sent.single.amount, 1400);
+      expect(store.billsToAskFor(seats), isEmpty);
+      expect(store.billsAskedFor(seats).length, 2);
+    });
+
+    test('settled expenses are not offered: nobody is about to pay for them', () {
+      // Kabir has said it arrived.
+      store.settleUp(g, fromId: g.you!.id, toId: kabir, amount: 500).status = SettlementStatus.confirmed;
+      final seats = {g.id: kabir};
+      expect(store.billsToAskFor(seats), isEmpty);
+    });
+
     test('you cannot ask yourself for a bill you paid', () {
       final mine = store.addExpense(
         g,

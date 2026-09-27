@@ -131,6 +131,7 @@ void main() {
     FocusManager.instance.primaryFocus?.unfocus();
     await settle(t);
     await shot(t, '08-add-expense');
+    await t.pump(const Duration(milliseconds: 100));
     await tapText(t, 'Next');
     await shot(t, '08b-add-expense-split');
     await tapText(t, 'Next');

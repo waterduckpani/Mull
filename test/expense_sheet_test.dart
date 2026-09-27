@@ -34,29 +34,6 @@ void main() {
     return store;
   }
 
-  testWidgets('the first step is enough: Add it saves with the defaults', (t) async {
-    final store = flat();
-    final group = store.groups.single;
-    final host = await pumpHost(t, store);
-    showAddExpense(host, group);
-    await t.pumpAndSettle();
-
-    // Nothing to divide yet, so neither button nor the later steps go anywhere.
-    expect(find.text('Who paid'), findsOneWidget);
-    await t.enterText(find.byType(TextField).at(0), 'Milk');
-    await t.enterText(find.byType(TextField).at(1), '90');
-    await t.pumpAndSettle();
-    expect(find.text('You paid · split equally · today'), findsOneWidget);
-
-    await t.tap(find.text('Add it'));
-    await t.pumpAndSettle();
-    final milk = group.expenses.single;
-    expect(milk.description, 'Milk');
-    expect(milk.amount, 90);
-    expect(milk.shares.values.fold(0, (a, b) => a + b), 90);
-    expect(milk.shares.length, 3);
-  });
-
   testWidgets('Next walks to the split and then the bill and note', (t) async {
     final store = flat();
     final group = store.groups.single;
@@ -67,9 +44,12 @@ void main() {
     await t.enterText(find.byType(TextField).at(0), 'Groceries');
     await t.enterText(find.byType(TextField).at(1), '600');
     await t.pump();
+    // One button, and it is Next until the end.
+    expect(find.text('Add it'), findsNothing);
     await t.tap(find.text('Next'));
     await t.pumpAndSettle();
     expect(find.text('When'), findsOneWidget);
+    expect(find.text('Add it'), findsNothing);
     expect(find.text('This happens again'), findsOneWidget);
 
     await t.tap(find.text('Next'));
@@ -80,7 +60,10 @@ void main() {
     await t.pump();
     await t.tap(find.text('Add it'));
     await t.pumpAndSettle();
-    expect(group.expenses.single.note, 'Big shop');
+    final shop = group.expenses.single;
+    expect(shop.note, 'Big shop');
+    expect(shop.amount, 600);
+    expect(shop.shares.values.fold(0, (a, b) => a + b), 600);
   });
 
   test('a day of expenses reads newest first, even with no time on the date', () {

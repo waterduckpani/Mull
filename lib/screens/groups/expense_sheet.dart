@@ -512,3 +512,51 @@ class _LedgerPicker extends StatelessWidget {
     );
   }
 }
+
+// ------------------------------------------------------------ ask for bills
+
+/// "Ask Sahil for the 3 bills", above the button that pays him.
+///
+/// Asking for a bill used to mean opening the ledger and then one expense, so
+/// in practice nobody did. The moment it matters is just before you pay, so
+/// that is where it is: one tap asks for every open expense of theirs with no
+/// photo on it. [seats] maps a group id to their seat in it.
+class AskForBills extends StatelessWidget {
+  const AskForBills({super.key, required this.seats, required this.name});
+
+  final Map<String, String> seats;
+  final String name;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.c;
+    final store = context.store;
+    final toAsk = store.billsToAskFor(seats);
+    final asked = store.billsAskedFor(seats);
+    if (toAsk.isEmpty && asked.isEmpty) return const SizedBox.shrink();
+
+    if (toAsk.isEmpty) {
+      return Padding(
+        padding: const EdgeInsets.only(bottom: 14),
+        child: Text(
+          asked.length == 1
+              ? 'You asked $name for the bill. It shows up on the expense once they add it.'
+              : 'You asked $name for ${asked.length} bills. Each shows up on its expense once they add it.',
+          style: MullType.caption(c.ink3),
+          textAlign: TextAlign.center,
+        ),
+      );
+    }
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: SecondaryButton(
+        toAsk.length == 1 ? 'Ask $name for the bill' : 'Ask $name for the ${toAsk.length} bills',
+        onTap: () {
+          final count = store.requestReceipts(toAsk);
+          HapticFeedback.mediumImpact();
+          Toast.show(context, 'Asked $name for ${count == 1 ? 'the bill' : '$count bills'}');
+        },
+      ),
+    );
+  }
+}

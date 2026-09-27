@@ -50,11 +50,15 @@ double _keyboardInset(BuildContext context) => MediaQuery.viewInsetsOf(context).
 /// Adding an expense, in three short steps: what it was and how much; who paid
 /// and how it splits; the bill and a note.
 ///
-/// One long form put nine decisions on one screen when most expenses need two
-/// of them. The defaults — you paid, today, split equally between everybody —
-/// are right most of the time, so "Add it" sits on every step and the first
-/// step says what those defaults are. The other steps are there for the times
-/// they are wrong, or there is a bill to keep.
+/// One long form put nine decisions on one screen. Split into steps, each is
+/// a glance: the defaults (you paid, today, split equally) are already
+/// filled in, so the middle step is usually one look and a tap. There is one
+/// button, and it says Next until the last step, where it says Add it — two
+/// buttons side by side put "Add it" where Next belongs, and it got tapped by
+/// people who meant to go on.
+///
+/// Editing is different: the expense is already whole, so the button is Save
+/// on every step and the labels at the top go anywhere.
 class _ExpenseSheet extends StatefulWidget {
   const _ExpenseSheet({required this.group, this.existing});
 
@@ -76,6 +80,9 @@ class _ExpenseSheetState extends State<_ExpenseSheet> {
 
   static const _steps = ['What', 'Who paid', 'Bill & note'];
   int _step = 0;
+
+  /// The furthest step reached, which the labels at the top can go back to.
+  late int _furthest = widget.existing == null ? 0 : _steps.length - 1;
 
   /// A photo chosen here, uploaded once the expense is saved.
   Uint8List? _bill;
@@ -136,13 +143,27 @@ class _ExpenseSheetState extends State<_ExpenseSheet> {
   /// there is an amount, so the later steps wait for the first.
   bool _canReach(int step) => step == 0 || _basicsDone;
 
+  /// Whether a label at the top may jump to [step]: only somewhere already
+  /// seen, so adding is always the whole flow.
+  bool _canJump(int step) => step <= _furthest && _canReach(step);
+
+  /// Whether this step is finished enough for Next.
+  bool get _stepDone => switch (_step) {
+    0 => _basicsDone,
+    1 => _split.isValid,
+    _ => _valid,
+  };
+
   void _go(int step) {
     if (step == _step || !_canReach(step)) return;
     // The keyboard covered half the split. It comes back when a field is
     // tapped.
     FocusScope.of(context).unfocus();
     HapticFeedback.selectionClick();
-    setState(() => _step = step);
+    setState(() {
+      _step = step;
+      if (step > _furthest) _furthest = step;
+    });
   }
 
   /// The rupee figure, when what was typed had paise in it.
@@ -241,30 +262,11 @@ class _ExpenseSheetState extends State<_ExpenseSheet> {
   String _when(MullStore store) =>
       daysBetween(_date, store.now()) == 0 ? 'Today' : shortDateWithYear(_date, store.now());
 
-  /// What "Add it" will record from the first step, in one line: the choices
-  /// nobody has been asked about yet, said out loud.
-  String _defaults(MullStore store) {
-    final payer = widget.group.memberById(_split.payerId);
-    final everyone = _split.included.length == widget.group.members.length;
-    return [
-      payer == null ? 'Someone paid' : '${store.shortName(payer)} paid',
-      switch (_split.method) {
-        SplitMethod.equal when everyone => 'split equally',
-        SplitMethod.equal => 'split between ${_split.included.length}',
-        SplitMethod.exact => 'exact amounts',
-        SplitMethod.shares => 'by shares',
-        SplitMethod.percent => 'by percentage',
-      },
-      _when(store).toLowerCase(),
-    ].join(' · ');
-  }
-
   @override
   Widget build(BuildContext context) {
     final keyboardUp = MediaQuery.viewInsetsOf(context).bottom > 0;
     final adding = widget.existing == null;
     final last = _step == _steps.length - 1;
-    final finish = adding ? 'Add it' : 'Save';
 
     return PopScope(
       // Back steps back, the way it does everywhere else in a flow. Close
@@ -280,7 +282,7 @@ class _ExpenseSheetState extends State<_ExpenseSheet> {
             title: adding ? 'Add an expense' : 'Edit expense',
             steps: _steps,
             index: _step,
-            reachable: _canReach,
+            reachable: _canJump,
             onTap: _go,
           ),
           Expanded(
@@ -319,19 +321,13 @@ class _ExpenseSheetState extends State<_ExpenseSheet> {
           ),
           Padding(
             padding: EdgeInsets.fromLTRB(20, 8, 20, keyboardUp ? 4 : 30),
-            child: last
-                ? PillButton(finish, onTap: _valid ? _save : null)
-                : Row(
-                    children: [
-                      Expanded(
-                        child: SecondaryButton(
-                          'Next',
-                          onTap: _canReach(_step + 1) && (_step == 0 || _split.isValid) ? () => _go(_step + 1) : null,
-                        ),
-                      ),
-                      const SizedBox(width: 10),
-                      Expanded(child: PillButton(finish, onTap: _valid ? _save : null)),
-                    ],
+            child: last || !adding
+                ? PillButton(adding ? 'Add it' : 'Save', onTap: _valid ? _save : null)
+                : PillButton(
+                    'Next',
+                    glyph: MullGlyph.chevronRight,
+                    glyphTrailing: true,
+                    onTap: _stepDone ? () => _go(_step + 1) : null,
                   ),
           ),
         ],
@@ -343,7 +339,6 @@ class _ExpenseSheetState extends State<_ExpenseSheet> {
 
   List<Widget> _whatStep() {
     final c = context.c;
-    final store = context.store;
     return [
       BigField(
         controller: _description,
@@ -363,21 +358,6 @@ class _ExpenseSheetState extends State<_ExpenseSheet> {
         // but rounding somebody's 499.50 up without a word is the app changing
         // a number they typed.
         help: _rounded == null ? null : Text('Rounded to ${inr(_rounded!)}. Mull keeps whole rupees.'),
-      ),
-      const SizedBox(height: 22),
-      // The rest of the expense as it stands. Tapping it is the same as Next.
-      Pressable(
-        onTap: _canReach(1) ? () => _go(1) : null,
-        scale: .99,
-        semanticLabel: '${_defaults(store)}. Change',
-        child: Row(
-          children: [
-            Expanded(child: Text(_defaults(store), style: ranade(13, color: c.ink2))),
-            Text('Change', style: ranade(13, color: _canReach(1) ? c.ink : c.ink3)),
-            const SizedBox(width: 4),
-            MullIcon(MullGlyph.chevronRight, size: 13, color: c.ink3, strokeWidth: 1.7),
-          ],
-        ),
       ),
     ];
   }
@@ -496,8 +476,7 @@ class _ExpenseSheetState extends State<_ExpenseSheet> {
 }
 
 /// The sheet's title, where it is in the three steps, and the close button.
-/// Every step is a tap away once there is an amount, so an edit to the split
-/// does not mean walking through the description first.
+/// A label goes back to a step already seen; when editing, to any of them.
 class _StepBar extends StatelessWidget {
   const _StepBar({
     required this.title,
@@ -759,6 +738,8 @@ class _SettleSheetState extends State<_SettleSheet> {
             style: ranade(13, height: 1.5, color: c.ink3),
           ),
           const SizedBox(height: 22),
+          // Before paying is when you want to see what for.
+          if (youPay) AskForBills(seats: {group.id: to.id}, name: store.shortName(to)),
           if (youPay && payee.upiId != null) ...[
             PillButton(
               _valid ? 'Pay ${inr(_value!)} over UPI' : 'Pay over UPI',
