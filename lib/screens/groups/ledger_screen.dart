@@ -8,6 +8,7 @@ import '../../ui/icons.dart';
 import '../../ui/page.dart';
 import '../../ui/tokens.dart';
 import '../../ui/widgets.dart';
+import 'expense_sheet.dart';
 import 'group_sheets.dart';
 
 /// Everything that has happened in a group, in two lists.
@@ -192,7 +193,7 @@ class _Row extends StatelessWidget {
                           Text(
                             caption,
                             style: MullType.caption(c.ink3, size: 11.5),
-                            maxLines: 2,
+                            maxLines: 3,
                             overflow: TextOverflow.ellipsis,
                           ),
                         ],
@@ -243,10 +244,16 @@ class _ExpenseRow extends StatelessWidget {
     return _Row(
       title: expense.description,
       caption: [
-        payer == null ? 'someone paid' : '${store.shortName(payer)} paid',
-        if (settled) 'settled' else split,
-        shortDate(expense.date),
-      ].join(' · '),
+        [
+          payer == null ? 'someone paid' : '${store.shortName(payer)} paid',
+          if (settled) 'settled' else split,
+          if (expense.receipt != null) 'bill attached' else if (expense.receiptRequested) 'bill asked for',
+          shortDate(expense.date),
+        ].join(' · '),
+        // The note's first line, where it can be seen without opening
+        // anything. The whole of it is one tap away.
+        if (expense.note case final note?) note.split('\n').first,
+      ].join('\n'),
       amount: expense.amount,
       dimmed: settled,
       trailing: expense.isRecurring
@@ -255,7 +262,7 @@ class _ExpenseRow extends StatelessWidget {
               child: MullIcon(MullGlyph.repeat, size: 13, color: c.ink3, strokeWidth: 1.7),
             )
           : null,
-      onTap: () => showAddExpense(context, group, existing: expense),
+      onTap: () => showExpenseDetail(context, group, expense),
       onLongPress: () => showExpenseActions(context, group, expense),
     );
   }

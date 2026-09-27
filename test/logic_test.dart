@@ -728,6 +728,9 @@ void main() {
 
     setUp(() {
       store = MullStore.memory();
+      // These build debts both ways on purpose, to net them by hand. The
+      // automatic pass has its own tests below.
+      store.autoNet = false;
       store.completeOnboarding(name: 'Bharat');
 
       // Ananya paid for the villa: you owe her 2,000 here.

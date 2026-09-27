@@ -196,6 +196,8 @@ class Expense {
     this.method = SplitMethod.equal,
     this.recurringId,
     this.note,
+    this.receipt,
+    this.receiptRequestedBy,
     DateTime? date,
     DateTime? createdAt,
   }) : id = id ?? newId(),
@@ -235,6 +237,18 @@ class Expense {
   /// Whatever needed saying — "includes Dev's half of the deposit".
   String? note;
 
+  /// A photo of the bill, as its storage key: `<groupId>/<expenseId>/<id>.jpg`.
+  /// The same key names the copy cached on the phone.
+  String? receipt;
+
+  /// The seat that asked to see the bill, until somebody attaches it.
+  ///
+  /// The expense-side twin of a payment claim: you can be told what you owe,
+  /// and you can ask to see what it was for.
+  String? receiptRequestedBy;
+
+  bool get receiptRequested => receipt == null && receiptRequestedBy != null;
+
   DateTime date;
 
   bool get isRecurring => recurringId != null;
@@ -248,6 +262,8 @@ class Expense {
     'method': method.name,
     'recurringId': recurringId,
     'note': note,
+    'receipt': receipt,
+    'receiptRequestedBy': receiptRequestedBy,
     'date': date.toIso8601String(),
     'createdAt': createdAt.toIso8601String(),
   };
@@ -256,6 +272,10 @@ class Expense {
   /// by. Only fields that sync; see [Group.acked].
   String get syncPrint => [
     description, amount, payerId, _sorted(shares), method.name, recurringId, note, _day(date),
+    // Only when set, so every expense written before receipts existed keeps
+    // the print it was acked with. Otherwise updating the app would make every
+    // row dirty and every phone re-push its whole ledger over everyone else's.
+    if (receipt != null || receiptRequestedBy != null) ...[receipt, receiptRequestedBy],
   ].toString();
 
   factory Expense.fromJson(Map<String, dynamic> j) => Expense(
@@ -267,6 +287,8 @@ class Expense {
     method: SplitMethod.values.byName(j['method'] as String? ?? 'equal'),
     recurringId: j['recurringId'] as String?,
     note: j['note'] as String?,
+    receipt: j['receipt'] as String?,
+    receiptRequestedBy: j['receiptRequestedBy'] as String?,
     date: _date(j['date']),
     createdAt: _date(j['createdAt']),
   );

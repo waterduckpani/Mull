@@ -68,6 +68,10 @@ class GroupDetailScreen extends StatelessWidget {
     // the create flow, so the screen says so rather than looking broken.
     final alone = group.members.length < 2;
 
+    // Nothing of yours to pay or collect, and no unlinked seats whose books
+    // you keep for them.
+    final nothingToSettle = transfers.isEmpty && group.placeholderTransfers.isEmpty;
+
     return MullPage(
       glow: const GlowSpec(size: 440, top: -160, left: -150, right: null),
       onRefresh: store.pullNow,
@@ -99,11 +103,23 @@ class GroupDetailScreen extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
               if (!group.isDirect) ...[
+                // Tapping the badge was the only way to change it, and nothing
+                // said so. The label is small enough to sit under a 44px badge
+                // without the row growing a line.
                 Pressable(
                   onTap: group.youAreAdmin ? () => pickGroupIcon(context, group) : null,
                   scale: .92,
-                  semanticLabel: 'Group icon',
-                  child: GroupBadge(group: group, size: 44, glyphSize: 21),
+                  semanticLabel: group.youAreAdmin ? 'Change icon' : 'Group icon',
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      GroupBadge(group: group, size: 44, glyphSize: 21),
+                      if (group.youAreAdmin) ...[
+                        const SizedBox(height: 5),
+                        Text('Change icon', style: MullType.caption(c.ink3, size: 9.5)),
+                      ],
+                    ],
+                  ),
                 ),
                 const SizedBox(width: 16),
               ],
@@ -121,9 +137,22 @@ class GroupDetailScreen extends StatelessWidget {
                       ),
                     ),
                     const SizedBox(height: 6),
-                    Text(
-                      group.isDirect ? 'Just you two' : '${group.members.length} people',
-                      style: MullType.caption(c.ink3, size: 12.5),
+                    // The count is the quickest way to the people in it.
+                    Pressable(
+                      onTap: () => push(GroupMembersScreen(groupId: group.id)),
+                      scale: .97,
+                      semanticLabel: 'People, ${group.members.length}',
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            group.isDirect ? 'Just you two' : '${group.members.length} people',
+                            style: MullType.caption(c.ink3, size: 12.5),
+                          ),
+                          const SizedBox(width: 4),
+                          MullIcon(MullGlyph.chevronRight, size: 11, color: c.ink3, strokeWidth: 1.8),
+                        ],
+                      ),
                     ),
                   ],
                 ),
@@ -217,16 +246,27 @@ class GroupDetailScreen extends StatelessWidget {
           gap: 8,
           padding: const EdgeInsets.symmetric(horizontal: Gutter.card),
           children: [
-            _Destination(
-              title: 'Settle up',
-              body: switch (transfers.length) {
-                0 => 'Nothing between you and anyone here',
-                1 => 'One payment with you in it',
-                final n => '${_words(n)} payments with you in them',
-              },
-              lift: somethingWaiting || alone ? Lift.card : Lift.focal,
-              onTap: () => push(SettleUpScreen(groupId: group.id)),
-            ),
+            // With nothing to settle there is nothing behind the card, and
+            // opening a screen to be told "You're square" is a tap for no
+            // reason. It says so where it stands, and does not open.
+            if (nothingToSettle)
+              _Destination(
+                title: 'Settle up',
+                body: group.expenses.isEmpty ? 'Nothing to settle yet' : "You're square",
+                lift: Lift.flat,
+                onTap: null,
+              )
+            else
+              _Destination(
+                title: 'Settle up',
+                body: switch (transfers.length) {
+                  0 => 'Nothing between you and anyone here',
+                  1 => 'One payment with you in it',
+                  final n => '${_words(n)} payments with you in them',
+                },
+                lift: somethingWaiting || alone ? Lift.card : Lift.focal,
+                onTap: () => push(SettleUpScreen(groupId: group.id)),
+              ),
             _Destination(
               title: group.isDirect ? 'The two of you' : 'People',
               detail: group.isDirect
@@ -311,12 +351,16 @@ class _Destination extends StatelessWidget {
   final String? detail;
 
   final Lift lift;
-  final VoidCallback onTap;
+
+  /// Null for a destination with nowhere to go. It stays on the screen,
+  /// greyed and with no chevron, so the answer is still readable.
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
     final c = context.c;
     final quiet = lift == Lift.flat;
+    final off = onTap == null;
     return Pressable(
       onTap: onTap,
       scale: .985,
@@ -331,7 +375,7 @@ class _Destination extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(title, style: MullType.cardTitle(quiet ? c.ink2 : c.ink, size: 18)),
+                    Text(title, style: MullType.cardTitle(off ? c.ink3 : (quiet ? c.ink2 : c.ink), size: 18)),
                     if (body != null) ...[
                       const SizedBox(height: 6),
                       Text(body!, style: MullType.body(c.ink3)),
@@ -343,13 +387,15 @@ class _Destination extends StatelessWidget {
                 const SizedBox(width: 12),
                 Text(detail!, style: MullType.caption(c.ink3)),
               ],
-              const SizedBox(width: 12),
-              MullIcon(
-                MullGlyph.chevronRight,
-                size: 15,
-                color: quiet ? c.ink3 : c.ink2,
-                strokeWidth: 1.8,
-              ),
+              if (!off) ...[
+                const SizedBox(width: 12),
+                MullIcon(
+                  MullGlyph.chevronRight,
+                  size: 15,
+                  color: quiet ? c.ink3 : c.ink2,
+                  strokeWidth: 1.8,
+                ),
+              ],
             ],
           ),
         ),

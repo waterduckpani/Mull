@@ -231,6 +231,7 @@ class _ExpenseSheetState extends State<_ExpenseSheet> {
                 BigField(
                   controller: _note,
                   size: 16,
+                  multiline: true,
                   hint: 'Note (optional)',
                   capitalization: TextCapitalization.sentences,
                 ),

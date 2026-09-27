@@ -378,6 +378,18 @@ class MullStore extends ChangeNotifier {
     pendingGroupDeletes
       ..clear()
       ..addAll((j['pendingGroupDeletes'] as List? ?? const []).cast<String>());
+    seenOffsets.clear();
+    if (j['seenOffsets'] case final List seen) {
+      seenOffsets.addAll(seen.cast<String>());
+    } else {
+      // A file from before net-offs were announced. Everything already in it
+      // was netted by hand, by someone who knew.
+      seenOffsets.addAll([
+        for (final g in groups)
+          for (final s in g.settlements)
+            if (s.offset) s.id,
+      ]);
+    }
     _adoptLegacyRepeats(j);
   }
 
@@ -430,9 +442,14 @@ class MullStore extends ChangeNotifier {
     'profile': profile.toJson(),
     'groups': groups.map((e) => e.toJson()).toList(),
     'pendingGroupDeletes': pendingGroupDeletes.toList(),
+    'seenOffsets': seenOffsets.toList(),
   };
 
   void _commit() {
+    // Every change, local or pulled, can open a debt that cancels against
+    // another ledger. Netting inside the commit means no screen ever shows
+    // the un-netted state for a frame.
+    _autoNetOff();
     notifyListeners();
     _save();
   }
@@ -1065,6 +1082,75 @@ class MullStore extends ChangeNotifier {
     _commitGroup(group);
   }
 
+  // ---------------------------------------------------------------- receipts
+
+  /// Whether you can ask to see the bill: it is not yours, it has a share of
+  /// yours in it, and there is no photo on it or request already out.
+  bool canRequestReceipt(Group group, Expense expense) {
+    final me = group.you?.id;
+    return me != null &&
+        expense.payerId != me &&
+        (expense.shares[me] ?? 0) > 0 &&
+        expense.receipt == null &&
+        expense.receiptRequestedBy == null;
+  }
+
+  /// Asks whoever paid to attach the bill. Goes to the payer alone: they are
+  /// the one holding it.
+  void requestReceipt(Group group, Expense expense) {
+    if (!canRequestReceipt(group, expense)) return;
+    final me = group.you!;
+    expense.receiptRequestedBy = me.id;
+    _commitGroup(group);
+    _tell(
+      Notice(
+        to: _reachable(group, {expense.payerId}),
+        groupId: group.id,
+        kind: NoticeKind.receiptRequested,
+        title: '${_theirNameFor(me)} asked for the bill for ${expense.description}',
+        body: '${inr(expense.amount)} · ${group.isDirect ? 'with you' : group.title}',
+        amount: expense.amount,
+      ),
+    );
+  }
+
+  /// Puts a photo of the bill on an expense, already uploaded under [key].
+  ///
+  /// Whoever asked for it is told. Nobody else is: a bill turning up on an
+  /// expense changes nobody's money.
+  void attachReceipt(Group group, Expense expense, String key) {
+    final asked = expense.receiptRequestedBy;
+    expense
+      ..receipt = key
+      ..receiptRequestedBy = null;
+    _commitGroup(group);
+    if (asked == null || asked == group.you?.id) return;
+    _tell(
+      Notice(
+        to: _reachable(group, {asked}),
+        groupId: group.id,
+        kind: NoticeKind.receiptAdded,
+        title: '${_theirNameFor(group.you ?? group.memberById(expense.payerId)!)} added the bill '
+            'for ${expense.description}',
+        body: '${inr(expense.amount)} · ${group.isDirect ? 'with you' : group.title}',
+        amount: expense.amount,
+      ),
+    );
+  }
+
+  void removeReceipt(Group group, Expense expense) {
+    expense.receipt = null;
+    _commitGroup(group);
+  }
+
+  /// Bills people have asked you for, on expenses you paid.
+  List<(Group, Expense)> get receiptRequestsForYou => [
+    for (final g in groups)
+      if (g.you?.id case final me?)
+        for (final e in g.expenses)
+          if (e.payerId == me && e.receiptRequested) (g, e),
+  ];
+
   // --------------------------------------------------------------- recurring
 
   Recurring addRecurring(
@@ -1323,18 +1409,41 @@ class MullStore extends ChangeNotifier {
   /// because if they are two people it moves money between strangers.
   bool canSettleAcross(Standing standing) => !standing.byNameOnly || ledgersWith(standing).length <= 1;
 
+  /// The ledgers that could cancel against each other, with what is really
+  /// open in each: the balance less anything already claimed as paid.
+  ///
+  /// A pending claim is money somebody says has moved. Netting it off as well
+  /// would cancel the same rupees twice the moment the claim is confirmed.
+  (List<(Group, int)> owed, List<(Group, int)> owing) _nettable(Standing standing) {
+    final owed = <(Group, int)>[];
+    final owing = <(Group, int)>[];
+    for (final (group, balance) in ledgersWith(standing)) {
+      final me = group.you!.id;
+      final them = standing.seats[group.id]!;
+      if (balance > 0) {
+        final open = balance - group.claimedBetween(them, me);
+        if (open > 0) owed.add((group, open));
+      } else {
+        final open = -balance - group.claimedBetween(me, them);
+        if (open > 0) owing.add((group, open));
+      }
+    }
+    return (owed, owing);
+  }
+
   /// Whether this person has debts pointing both ways that could cancel.
   bool canNetOff(Standing standing) {
     if (standing.byNameOnly) return false;
-    final ledgers = ledgersWith(standing);
-    return ledgers.any((l) => l.$2 > 0) && ledgers.any((l) => l.$2 < 0);
+    final (owed, owing) = _nettable(standing);
+    return owed.isNotEmpty && owing.isNotEmpty;
   }
 
   /// What would cancel if you netted off — the money neither of you has to
   /// send.
   int netOffAmount(Standing standing) {
-    final up = ledgersWith(standing).where((l) => l.$2 > 0).fold(0, (s, l) => s + l.$2);
-    final down = ledgersWith(standing).where((l) => l.$2 < 0).fold(0, (s, l) => s - l.$2);
+    final (owed, owing) = _nettable(standing);
+    final up = owed.fold(0, (s, l) => s + l.$2);
+    final down = owing.fold(0, (s, l) => s + l.$2);
     return up < down ? up : down;
   }
 
@@ -1349,10 +1458,13 @@ class MullStore extends ChangeNotifier {
   /// Confirmed on the spot, and it is the one place that is right to do so: no
   /// money is claimed to have moved, and neither person's net position changes
   /// by a rupee. There is nothing for the other side to verify.
-  List<Settlement> netOff(Standing standing) {
+  ///
+  /// [announce] leaves the offsets unseen on this phone, so the home screen
+  /// says it happened. Only [_autoNetOff] wants that; somebody who tapped
+  /// "Net off" already knows.
+  List<Settlement> netOff(Standing standing, {bool announce = false}) {
     if (!canNetOff(standing)) return const [];
-    final owed = [for (final l in ledgersWith(standing)) if (l.$2 > 0) l];
-    final owing = [for (final l in ledgersWith(standing)) if (l.$2 < 0) (l.$1, -l.$2)];
+    final (owed, owing) = _nettable(standing);
     final written = <Settlement>[];
     var i = 0;
     var j = 0;
@@ -1379,6 +1491,8 @@ class MullStore extends ChangeNotifier {
       }
     }
 
+    if (!announce) seenOffsets.addAll([for (final w in written) w.id]);
+
     if (written.isNotEmpty) {
       final total = written.fold(0, (s, w) => s + w.amount) ~/ 2;
       _tell(
@@ -1394,6 +1508,92 @@ class MullStore extends ChangeNotifier {
       );
     }
     return written;
+  }
+
+  // ------------------------------------------------------ automatic netting
+
+  /// Offsets this phone has already told you about, by settlement id.
+  ///
+  /// Kept per phone, in mull.json: whether you have seen something is not a
+  /// fact about the ledger.
+  final Set<String> seenOffsets = {};
+
+  /// Set while netting, so the commits it makes do not start it again.
+  bool _netting = false;
+
+  /// Off in tests that build debts both ways on purpose and read them back.
+  bool autoNet = true;
+
+  /// Whether this phone is the one that nets off with this person.
+  ///
+  /// Exactly one of the two may, or both phones would write the same offsets
+  /// before either had seen the other's, and the debt would be cancelled
+  /// twice — leaving each owing the other the amount that was meant to
+  /// disappear. The lower account id writes; the other side gets the offsets
+  /// in its next pull. A seat with no account behind it has no phone, so it is
+  /// yours to do, and so is everything in a Mull with no backend.
+  bool _youNetWith(Standing standing) {
+    final theirs = standing.member.userId;
+    if (theirs == null) return true;
+    final mine = groups.map((g) => g.you?.userId).nonNulls.firstOrNull;
+    return mine == null || mine.compareTo(theirs) < 0;
+  }
+
+  /// Nets off with everyone it can, without being asked.
+  ///
+  /// This is the point of Mull. Owing someone ₹500 on the trip while they owe
+  /// you ₹500 on the flat is nothing owed, and the home screen already said
+  /// so — while both groups still showed a debt and asked you to settle it.
+  /// Now the groups agree with the home screen, and the home screen says what
+  /// happened (see [unseenNetOffs]) until you have read it.
+  void _autoNetOff() {
+    if (!autoNet || _netting) return;
+    _netting = true;
+    try {
+      for (final standing in standings) {
+        if (_youNetWith(standing) && canNetOff(standing)) netOff(standing, announce: true);
+      }
+    } finally {
+      _netting = false;
+    }
+  }
+
+  /// Net-offs you have not acknowledged, one per person.
+  ///
+  /// Only recent ones: a phone signing in fresh pulls every offset ever
+  /// written, and a month-old one is history, not news.
+  List<NetOffNews> get unseenNetOffs {
+    final cutoff = now().subtract(const Duration(days: 14));
+    final byPerson = <String, NetOffNews>{};
+    for (final group in groups) {
+      final me = group.you?.id;
+      if (me == null) continue;
+      for (final s in group.settlements) {
+        if (!s.offset || seenOffsets.contains(s.id) || s.date.isBefore(cutoff)) continue;
+        if (s.fromId != me && s.toId != me) continue;
+        final other = group.memberById(s.fromId == me ? s.toId : s.fromId);
+        if (other == null) continue;
+        final key = _personKey(other);
+        final held = byPerson[key] ??= NetOffNews(member: other);
+        held.ids.add(s.id);
+        if (!held.groups.contains(group)) held.groups.add(group);
+        // Both halves of the pair carry the same amount; one direction is the
+        // figure. Counted the way they paid you, falling back to the other way
+        // while only one ledger's half has arrived.
+        if (s.toId == me) {
+          held.towardsYou += s.amount;
+        } else {
+          held.fromYou += s.amount;
+        }
+      }
+    }
+    return byPerson.values.toList();
+  }
+
+  /// Says you have read about a net-off. It stays in both ledgers regardless.
+  void acknowledgeNetOff(NetOffNews news) {
+    seenOffsets.addAll(news.ids);
+    _commit();
   }
 
   /// Your own seat, for a sentence somebody else reads.
@@ -2157,6 +2357,8 @@ enum NoticeKind {
   nettedOff,
   reminder,
   addedToGroup,
+  receiptRequested,
+  receiptAdded,
 }
 
 extension NoticeKindWire on NoticeKind {
@@ -2172,6 +2374,8 @@ extension NoticeKindWire on NoticeKind {
     NoticeKind.nettedOff => 'netted_off',
     NoticeKind.reminder => 'reminder',
     NoticeKind.addedToGroup => 'added_to_group',
+    NoticeKind.receiptRequested => 'receipt_requested',
+    NoticeKind.receiptAdded => 'receipt_added',
   };
 
   static NoticeKind read(String? value) => switch (value) {
@@ -2184,6 +2388,8 @@ extension NoticeKindWire on NoticeKind {
     'settlement_removed' => NoticeKind.settlementRemoved,
     'netted_off' => NoticeKind.nettedOff,
     'reminder' => NoticeKind.reminder,
+    'receipt_requested' => NoticeKind.receiptRequested,
+    'receipt_added' => NoticeKind.receiptAdded,
     _ => NoticeKind.addedToGroup,
   };
 }
@@ -2207,6 +2413,25 @@ class Notice {
   final String body;
   final String? groupId;
   final int? amount;
+}
+
+/// A net-off with one person that you have not been told about yet.
+class NetOffNews {
+  NetOffNews({required this.member});
+
+  /// One of their seats, for a name.
+  final Member member;
+
+  /// The offset settlements, so acknowledging marks exactly these.
+  final List<String> ids = [];
+
+  final List<Group> groups = [];
+  int towardsYou = 0;
+  int fromYou = 0;
+
+  /// What cancelled. Each ledger's half says the same thing from opposite
+  /// ends; the larger covers the moment only one half has synced.
+  int get amount => towardsYou > fromYou ? towardsYou : fromYou;
 }
 
 /// One person and everything they owe you, netted across every ledger.

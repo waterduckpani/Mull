@@ -168,19 +168,27 @@ class PillButton extends StatelessWidget {
                   dimension: 18,
                   child: CircularProgressIndicator(strokeWidth: 1.6, color: c.pillInk),
                 )
-              : Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    if (glyph != null && !glyphTrailing) ...[
-                      MullIcon(glyph!, size: 17, color: c.pillInk, strokeWidth: 1.8),
-                      const SizedBox(width: 9),
-                    ],
-                    Text(label, style: MullType.button(c.pillInk)),
-                    if (glyph != null && glyphTrailing) ...[
-                      const SizedBox(width: 9),
-                      MullIcon(glyph!, size: 17, color: c.pillInk, strokeWidth: 1.8),
-                    ],
-                  ],
+              // Scales down rather than overflowing when two share a row, or
+              // the text size is turned up.
+              : FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        if (glyph != null && !glyphTrailing) ...[
+                          MullIcon(glyph!, size: 17, color: c.pillInk, strokeWidth: 1.8),
+                          const SizedBox(width: 9),
+                        ],
+                        Text(label, style: MullType.button(c.pillInk)),
+                        if (glyph != null && glyphTrailing) ...[
+                          const SizedBox(width: 9),
+                          MullIcon(glyph!, size: 17, color: c.pillInk, strokeWidth: 1.8),
+                        ],
+                      ],
+                    ),
+                  ),
                 ),
         ),
       ),
@@ -210,15 +218,21 @@ class SecondaryButton extends StatelessWidget {
           height: 58,
           alignment: Alignment.center,
           decoration: surfaceOf(c, Lift.card, radius: BorderRadius.circular(29)),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              if (glyph != null) ...[
-                MullIcon(glyph!, size: 17, color: c.ink, strokeWidth: 1.8),
-                const SizedBox(width: 9),
-              ],
-              Text(label, style: MullType.button(c.ink)),
-            ],
+          child: FittedBox(
+            fit: BoxFit.scaleDown,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (glyph != null) ...[
+                    MullIcon(glyph!, size: 17, color: c.ink, strokeWidth: 1.8),
+                    const SizedBox(width: 9),
+                  ],
+                  Text(label, style: MullType.button(c.ink)),
+                ],
+              ),
+            ),
           ),
         ),
       ),
@@ -579,8 +593,7 @@ class Hairline extends StatelessWidget {
   final Color? color;
 
   @override
-  Widget build(BuildContext context) =>
-      Container(height: 1, color: color ?? context.c.line);
+  Widget build(BuildContext context) => Container(height: 1, color: color ?? context.c.line);
 }
 
 // ---------------------------------------------------------------- backgrounds
@@ -705,9 +718,7 @@ class SelectionRow extends StatelessWidget {
                 shape: BoxShape.circle,
                 color: selected ? c.ink : c.ink.withValues(alpha: .1),
               ),
-              child: selected
-                  ? MullIcon(MullGlyph.check, size: 13, color: c.screen, strokeWidth: 2.6)
-                  : null,
+              child: selected ? MullIcon(MullGlyph.check, size: 13, color: c.screen, strokeWidth: 2.6) : null,
             ),
           ],
         ),
@@ -934,6 +945,7 @@ class BigField extends StatelessWidget {
     this.capitalization = TextCapitalization.sentences,
     this.keyboardType,
     this.underline = true,
+    this.multiline = false,
   });
 
   final TextEditingController controller;
@@ -942,6 +954,11 @@ class BigField extends StatelessWidget {
   final Widget? trailing;
   final Widget? help;
   final double size;
+
+  /// Wraps and grows (to five lines, then scrolls) instead of scrolling
+  /// sideways. For a note: on one line anything past the first few words was
+  /// out of sight, and the field read as if it had kept only those.
+  final bool multiline;
   final bool numeric;
   final bool autofocus;
   final ValueChanged<String>? onChanged;
@@ -964,7 +981,9 @@ class BigField extends StatelessWidget {
         Container(
           padding: const EdgeInsets.only(bottom: 16),
           decoration: underline
-              ? BoxDecoration(border: Border(bottom: BorderSide(color: c.inputLine)))
+              ? BoxDecoration(
+                  border: Border(bottom: BorderSide(color: c.inputLine)),
+                )
               : null,
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.center,
@@ -982,11 +1001,13 @@ class BigField extends StatelessWidget {
                   cursorOpacityAnimates: true,
                   keyboardAppearance: c.isDark ? Brightness.dark : Brightness.light,
                   textCapitalization: numeric ? TextCapitalization.none : capitalization,
+                  minLines: 1,
+                  maxLines: multiline ? 5 : 1,
                   keyboardType:
                       keyboardType ??
                       (numeric
                           ? const TextInputType.numberWithOptions(signed: true, decimal: true)
-                          : TextInputType.text),
+                          : (multiline ? TextInputType.multiline : TextInputType.text)),
                   autocorrect: !numeric && keyboardType == null,
                   textInputAction: textInputAction,
                   onChanged: onChanged,

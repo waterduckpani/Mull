@@ -13,6 +13,7 @@ import '../ui/sheet.dart';
 import '../ui/tokens.dart';
 import '../ui/widgets.dart';
 import 'groups/create_group_flow.dart';
+import 'groups/expense_sheet.dart';
 import 'groups/group_detail_screen.dart';
 import 'groups/group_sheets.dart';
 import 'groups/icon_picker.dart';
@@ -41,6 +42,8 @@ class HomeScreen extends StatelessWidget {
     final claims = store.confirmationsForYou;
     final waiting = store.claimsAwaitingOthers;
     final due = store.dueRecurring;
+    final netted = store.unseenNetOffs;
+    final billsAsked = store.receiptRequestsForYou;
     final empty = store.groups.isEmpty;
 
     void open(Group g) => Navigator.of(context).push(
@@ -78,11 +81,26 @@ class HomeScreen extends StatelessWidget {
     return MullPage(
       glow: const GlowSpec(size: 450, top: -170, right: -150),
       onRefresh: store.pullNow,
-      bottom: PillButton(
-        'Start a group',
-        glyph: MullGlyph.plus,
-        onTap: () => start(),
-      ),
+      // Adding an expense is the thing people do most, so once there is a
+      // ledger to add it to it gets the primary button, and starting a group
+      // steps aside next to it.
+      bottom: empty
+          ? PillButton(
+              'Start a group',
+              glyph: MullGlyph.plus,
+              onTap: () => start(),
+            )
+          : Row(
+              children: [
+                Expanded(
+                  child: SecondaryButton('New group', onTap: () => start()),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: PillButton('Add expense', onTap: () => showQuickAdd(context)),
+                ),
+              ],
+            ),
       children: empty
           ? [
               // A new user's first screen is this one, and the request is how
@@ -104,6 +122,11 @@ class HomeScreen extends StatelessWidget {
                 },
               ),
 
+              // What Mull cancelled on its own, said first: it is why the
+              // number above may be smaller than the groups led you to expect.
+              for (final news in netted)
+                _NettedCard(key: ValueKey('netted-${news.ids.first}'), news: news),
+
               // Anything waiting on an answer sits directly under the number,
               // because the number is not finished until these are dealt with.
               for (final (group, settlement) in claims)
@@ -118,6 +141,13 @@ class HomeScreen extends StatelessWidget {
                   key: ValueKey('waiting-${settlement.id}'),
                   group: group,
                   settlement: settlement,
+                  lift: claim(),
+                ),
+              for (final (group, expense) in billsAsked)
+                _BillAskedCard(
+                  key: ValueKey('bill-${expense.id}'),
+                  group: group,
+                  expense: expense,
                   lift: claim(),
                 ),
               for (final (group, schedule) in due)
@@ -292,6 +322,119 @@ class _Footer extends StatelessWidget {
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// Mull netted off debts with someone across ledgers. Said once, until read.
+///
+/// Netting happens without asking, because it changes nobody's money: you
+/// owed ₹500 on one side and were owed ₹500 on the other, and that is nothing
+/// owed. But the groups' numbers move, so it is announced rather than silent.
+class _NettedCard extends StatelessWidget {
+  const _NettedCard({super.key, required this.news});
+
+  final NetOffNews news;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.c;
+    final store = context.store;
+    final who = store.shortName(news.member);
+    final where = switch (news.groups.length) {
+      0 || 1 => 'across your ledgers',
+      2 => 'between ${news.groups[0].title} and ${news.groups[1].title}',
+      final n => 'across $n ledgers',
+    };
+
+    return Surface(
+      lift: Lift.card,
+      radius: 28,
+      margin: const EdgeInsets.fromLTRB(Gutter.card, 10, Gutter.card, 0),
+      padding: const EdgeInsets.fromLTRB(22, 18, 16, 18),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '${inr(news.amount)} netted off with $who',
+                  style: ranade(16, height: 1.35, color: c.ink),
+                  maxLines: 2,
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'You owed each other $where, so it cancelled. Nobody pays it.',
+                  style: MullType.caption(c.ink3, size: 11.5),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 12),
+          InlineButton(
+            'OK',
+            height: 48,
+            onTap: () => store.acknowledgeNetOff(news),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Somebody wants to see the bill for an expense you paid.
+class _BillAskedCard extends StatelessWidget {
+  const _BillAskedCard({
+    super.key,
+    required this.group,
+    required this.expense,
+    required this.lift,
+  });
+
+  final Group group;
+  final Expense expense;
+  final Lift lift;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.c;
+    final store = context.store;
+    final asker = group.memberById(expense.receiptRequestedBy!);
+
+    return Surface(
+      lift: lift,
+      radius: 28,
+      margin: const EdgeInsets.fromLTRB(Gutter.card, 10, Gutter.card, 0),
+      padding: const EdgeInsets.fromLTRB(22, 18, 16, 18),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '${asker == null ? 'Someone' : store.shortName(asker)} wants the bill for ${expense.description}',
+                  style: ranade(16, height: 1.35, color: c.ink),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  '${inr(expense.amount)} · ${group.title}',
+                  style: MullType.caption(c.ink3, size: 11.5),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 12),
+          InlineButton(
+            'Add it',
+            height: 48,
+            onTap: () => showExpenseDetail(context, group, expense),
+          ),
+        ],
       ),
     );
   }

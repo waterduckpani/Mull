@@ -70,6 +70,14 @@ class GroupsSync {
   Future<bool?> _hasSettlementExtras() async =>
       _settlementsExtended ??= await _probe(() => Backend.client.from('settlements').select('is_offset').limit(1));
 
+  /// Whether the 2026-09-27 receipts migration is in: a bill photo on an
+  /// expense, and who asked to see it. Left out of every select and upsert
+  /// until it is, for the same reason as the others.
+  bool? _receipts;
+
+  Future<bool?> _hasReceipts() async =>
+      _receipts ??= await _probe(() => Backend.client.from('expenses').select('receipt_path').limit(1));
+
   /// True if the query works, false if Postgres says the table or column does
   /// not exist, and null for anything else — no signal, an expired token —
   /// which says nothing about the schema and must not be remembered.
@@ -226,7 +234,7 @@ class GroupsSync {
     final settlementExtras = await _hasSettlementExtras();
     // Not knowing the schema is not knowing what to ask for. The ledger on
     // screen stays as it is until the next try.
-    if (extended == null || settlementExtras == null) return false;
+    if (extended == null || settlementExtras == null || await _hasReceipts() == null) return false;
     try {
       final revs = await _revisions();
       if (revs == null) {
@@ -313,7 +321,7 @@ class GroupsSync {
           members ( id, user_id, name, email, phone, upi_id${extended ? ', role' : ''},
                     account:user_id ( name, upi_id ) ),
           expenses ( id, description, amount, payer_member_id, method, created_at,
-                     repeats_monthly, spent_on, deleted_at${extended ? ', recurring_id, note' : ''},
+                     repeats_monthly, spent_on, deleted_at${extended ? ', recurring_id, note' : ''}${_receipts == true ? ', receipt_path, receipt_requested_by' : ''},
                      expense_shares ( member_id, amount ) )${extended ? ''',
           recurring_expenses ( id, description, amount, payer_member_id, method,
                                frequency, next_due, ends_on, paused, auto_add,
@@ -389,6 +397,8 @@ class GroupsSync {
           method: SplitMethod.values.byName(e['method'] as String? ?? 'equal'),
           recurringId: e['recurring_id'] as String?,
           note: e['note'] as String?,
+          receipt: e['receipt_path'] as String?,
+          receiptRequestedBy: e['receipt_requested_by'] as String?,
           date: DateTime.parse(e['spent_on'] as String),
           createdAt: e['created_at'] == null ? null : _instant(e['created_at']),
         ),
@@ -507,7 +517,8 @@ class GroupsSync {
 
     final extended = await _hasExtendedSchema();
     final settlementExtras = await _hasSettlementExtras();
-    if (extended == null || settlementExtras == null) return false;
+    final receipts = await _hasReceipts();
+    if (extended == null || settlementExtras == null || receipts == null) return false;
 
     final printed = group.printed;
     bool dirty(String key) => group.isDirty(key, printed[key]!);
@@ -622,6 +633,8 @@ class GroupsSync {
               'created_by': me,
               if (extended) 'recurring_id': e.recurringId,
               if (extended) 'note': e.note,
+              if (receipts) 'receipt_path': e.receipt,
+              if (receipts) 'receipt_requested_by': e.receiptRequestedBy,
               if (fresh('e:${e.id}')) 'deleted_at': null,
             },
         ]);
