@@ -79,6 +79,9 @@ class HomeScreen extends StatelessWidget {
     }
 
     return MullPage(
+      // Its own scroll position either side of empty: the last group going
+      // left the empty screen opened part-way down, under the header.
+      key: ValueKey(empty),
       glow: const GlowSpec(size: 450, top: -170, right: -150),
       onRefresh: store.pullNow,
       // Adding an expense is the thing people do most, so once there is a
@@ -632,8 +635,9 @@ class _EmptyHome extends StatelessWidget {
                 ConstrainedBox(
                   constraints: const BoxConstraints(maxWidth: 320),
                   child: Text(
-                    'Add what people pay as it happens. Mull works out the fewest '
-                    'payments that clear it, and the money moves over UPI.',
+                    'Add what people pay as it happens. Mull keeps track of who owes '
+                    'whom, cancels debts that point both ways, and the money moves '
+                    'over UPI.',
                     style: MullType.body(c.ink3),
                   ),
                 ),
@@ -818,9 +822,10 @@ Future<void> showHowItWorks(BuildContext context) => showMullSheet(
               ),
               beat(
                 '02',
-                'Mull finds the fewest payments',
-                'Four people and eleven expenses usually come down to two '
-                    'transfers. You see who pays whom, not a wall of arithmetic.',
+                'Mull nets it off, person by person',
+                'You see one number for each person, across every group you '
+                    'share. Owing Ananya on the trip while she owes you on the '
+                    'flat cancels out on its own.',
               ),
               beat(
                 '03',
@@ -1124,7 +1129,6 @@ class _LedgerRow extends StatelessWidget {
 
 /// Long-press on a ledger row.
 Future<void> showLedgerActions(BuildContext context, Group group) {
-  final store = context.readStore;
   return showMullSheet(
     context,
     fitContent: true,
@@ -1172,15 +1176,7 @@ Future<void> showLedgerActions(BuildContext context, Group group) {
                   SheetAction(
                     group.isDirect ? 'Delete this ledger' : 'Delete group',
                     destructive: true,
-                    onTap: () => run(() {
-                      store.deleteGroup(group);
-                      Toast.show(
-                        context,
-                        'Deleted ${group.title}',
-                        action: 'Undo',
-                        onAction: () => store.restoreGroup(group),
-                      );
-                    }),
+                    onTap: () => run(() => confirmDeleteGroup(context, group)),
                   ),
               ],
             ),

@@ -38,6 +38,10 @@ class MullStore extends ChangeNotifier {
   DateTime Function() clock = DateTime.now;
   DateTime now() => clock();
 
+  /// The signed-in account's id. Set by the sync; null in tests and in a
+  /// build with no backend.
+  String? Function()? accountId;
+
   /// Pushes a changed group to the server. Set once the backend is up; left
   /// null in tests and in a signed-out app, where groups are simply local.
   Future<void> Function(Group group)? onGroupChanged;
@@ -1237,6 +1241,7 @@ class MullStore extends ChangeNotifier {
       method: method,
       frequency: frequency,
       nextDue: dayOf(startsOn),
+      anchorDay: startsOn.day,
       endsOn: endsOn == null ? null : dayOf(endsOn),
       autoAdd: autoAdd,
     );
@@ -1352,7 +1357,11 @@ class MullStore extends ChangeNotifier {
   }
 
   /// "Not this month." Moves the schedule on without recording anything.
+  ///
+  /// Only a period that is actually owed can be skipped. Skipping one that is
+  /// still to come moved the date a period further every time it was tapped.
   void skipDue(Group group, Recurring schedule) {
+    if (!schedule.isDue(now())) return;
     schedule.advance(now());
     _commitGroup(group);
   }
@@ -1599,7 +1608,10 @@ class MullStore extends ChangeNotifier {
   bool _youNetWith(Standing standing) {
     final theirs = standing.member.userId;
     if (theirs == null) return true;
-    final mine = groups.map((g) => g.you?.userId).nonNulls.firstOrNull;
+    // The session's account, not your seat's: a seat made on this phone has no
+    // account id on it until the group's first pull, and a phone that could
+    // not tell who it was used to net off alongside the other one.
+    final mine = accountId?.call() ?? groups.map((g) => g.you?.userId).nonNulls.firstOrNull;
     return mine == null || mine.compareTo(theirs) < 0;
   }
 
@@ -1812,21 +1824,41 @@ class MullStore extends ChangeNotifier {
 
   /// Whether *you* may take a payment off the record.
   ///
-  /// Only the two people it is between. A settlement is the evidence that a
-  /// debt was cleared, and a third party in a group of eight being able to
-  /// delete it — silently reopening money between two other people — was a
-  /// long-press away.
+  /// Only the two people it is between, and once it is confirmed only the one
+  /// who paid — taking it back puts the debt on them and nobody else. The
+  /// payee who confirmed by mistake asks the payer; a payee deleting money
+  /// they had said arrived is how a debt gets paid twice. A payment from a
+  /// seat with nobody behind it is the exception, since nobody else could
+  /// correct it. The server holds the same line.
+  ///
+  /// A net-off is never removed by hand. It is one half of a pair written
+  /// into two ledgers, taking one half back reopened a debt the other half
+  /// had already cancelled, and Mull writes them on its own anyway.
   bool canRemoveSettlement(Group group, Settlement settlement) {
     final me = group.you?.id;
-    return me != null && (settlement.fromId == me || settlement.toId == me);
+    if (me == null || settlement.offset) return false;
+    if (settlement.fromId == me) return true;
+    if (settlement.toId != me) return false;
+    return !settlement.clearsDebt || !(group.memberById(settlement.fromId)?.isLinked ?? false);
   }
 
   /// Why the app will not remove it, in the words it should say.
-  String? whySettlementStays(Group group, Settlement settlement) =>
-      canRemoveSettlement(group, settlement)
-          ? null
-          : 'This payment is between two other people. Only they can take it '
-              'off the record.';
+  String? whySettlementStays(Group group, Settlement settlement) {
+    if (canRemoveSettlement(group, settlement)) return null;
+    final me = group.you?.id;
+    if (settlement.offset) {
+      return 'Mull nets debts off on its own, in both ledgers at once, so one '
+          'side of it cannot be taken back.';
+    }
+    if (settlement.toId == me) {
+      final payer = group.memberById(settlement.fromId);
+      final name = payer == null ? 'whoever paid' : shortName(payer);
+      return 'You confirmed this, so only $name can take it off the record. '
+          'If it never arrived, ask them to.';
+    }
+    return 'This payment is between two other people. Only they can take it '
+        'off the record.';
+  }
 
   bool removeSettlement(Group group, Settlement settlement) {
     if (!canRemoveSettlement(group, settlement)) return false;

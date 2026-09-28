@@ -653,8 +653,8 @@ class _WelcomeState extends State<_Welcome> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               point(
-                'The fewest payments',
-                'Eleven expenses between four people usually come down to two transfers.',
+                'Debts cancel on their own',
+                'Owe someone ₹500 on the trip while they owe you ₹500 on the flat? That is nothing owed.',
               ),
               point(
                 'Nobody marks their own homework',

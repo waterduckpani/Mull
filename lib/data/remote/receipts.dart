@@ -16,7 +16,18 @@ import 'backend.dart';
 class Receipts {
   static const _bucket = 'receipts';
 
+  static final _uuid = r'[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}';
+  static final _key = RegExp('^$_uuid/$_uuid/$_uuid\\.jpg\$');
+
+  /// Whether [key] has the one shape this app writes. Anything else — from a
+  /// modified client, or a server that let it through — is not a bill.
+  static bool isKey(String? key) => key != null && _key.hasMatch(key);
+
+  /// The phone's copy of [key]. Refuses any other shape: the key comes off a
+  /// row other people can write, and `<group>/../../mull.json` used to be a
+  /// path under this phone's storage that removing the bill would delete.
   static Future<File> _local(String key) async {
+    if (!isKey(key)) throw ArgumentError.value(key, 'key', 'not a bill');
     final dir = await getApplicationSupportDirectory();
     return File('${dir.path}/receipts/$key');
   }
@@ -54,6 +65,7 @@ class Receipts {
   /// The bill on this phone, downloading it first if it is not here yet.
   /// Null when it cannot be had right now.
   static Future<File?> load(String key) async {
+    if (!isKey(key)) return null;
     final file = await _local(key);
     if (await file.exists()) return file;
     if (!(Backend.isAvailable && Backend.isSignedIn)) return null;
@@ -71,6 +83,7 @@ class Receipts {
   /// Takes the photo off the server and the phone. Best effort: the expense
   /// has already stopped pointing at it, which is what anybody sees.
   static Future<void> delete(String key) async {
+    if (!isKey(key)) return;
     try {
       final file = await _local(key);
       if (await file.exists()) await file.delete();

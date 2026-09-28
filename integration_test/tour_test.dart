@@ -194,7 +194,7 @@ void main() {
     await settle(t, 800);
 
     // ---- 4B and 4C, starting something new
-    await tapText(t, 'Start a group');
+    await tapText(t, 'New group');
     await settle(t, 800);
     await shot(t, '13-name-the-group');
     await t.enterText(find.byType(TextField).first, 'Ski trip');

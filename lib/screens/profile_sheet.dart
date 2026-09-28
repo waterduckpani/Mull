@@ -113,7 +113,6 @@ class _AccountRowState extends State<_AccountRow> {
           onTap: () async {
             final store = context.readStore;
             final nav = Navigator.of(context);
-            final messenger = ScaffoldMessenger.of(context);
             if (!await _confirm(
               context,
               title: 'Delete your account?',
@@ -126,7 +125,7 @@ class _AccountRowState extends State<_AccountRow> {
             }
             final result = await AuthService.deleteAccount();
             if (!result.isOk) {
-              messenger.showSnackBar(SnackBar(content: Text(result.error!)));
+              if (context.mounted) Toast.show(context, result.error!);
               return;
             }
             HapticFeedback.heavyImpact();
@@ -263,7 +262,9 @@ class _ProfileSheetState extends State<_ProfileSheet> {
         },
       ),
     );
-    controller.dispose();
+    // After the sheet has finished leaving: it rebuilds against the controller
+    // on its way out, and disposing it now threw on every Save.
+    Future.delayed(const Duration(milliseconds: 600), controller.dispose);
     if (saved == null || !mounted) return;
     final value = saved.trim();
     store.updateProfile((p) => p.upiId = value.isEmpty ? null : value);

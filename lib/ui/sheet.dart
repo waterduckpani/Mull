@@ -259,10 +259,14 @@ class _SheetInk extends StatelessWidget {
 
 /// Standard sheet header: eyebrow on the left, close on the right.
 class SheetHeader extends StatelessWidget {
-  const SheetHeader(this.title, {super.key, this.showClose = true});
+  const SheetHeader(this.title, {super.key, this.showClose = true, this.action});
 
   final String title;
   final bool showClose;
+
+  /// One action beside the close button, for something that should never be
+  /// below the fold: deleting the thing the sheet is about.
+  final Widget? action;
 
   @override
   Widget build(BuildContext context) {
@@ -274,6 +278,7 @@ class SheetHeader extends StatelessWidget {
         child: Row(
           children: [
             Expanded(child: Eyebrow(title, size: 10.5, tracking: .18)),
+            if (action != null) ...[action!, const SizedBox(width: 8)],
             if (showClose)
               CircleButton(
                 filled: false,
@@ -355,10 +360,13 @@ class Toast {
         },
       ),
     );
-    overlay.insert(_entry!);
+    final entry = _entry!;
+    overlay.insert(entry);
     _timer = Timer(const Duration(milliseconds: 3800), () async {
       await key.currentState?.dismiss();
-      hide();
+      // Only this toast. Another may have replaced it while it faded, and
+      // hiding that one took its Undo with it.
+      if (identical(_entry, entry)) hide();
     });
   }
 
@@ -404,10 +412,11 @@ class NoticeBanner {
         onDismiss: hide,
       ),
     );
-    overlay.insert(_entry!);
+    final entry = _entry!;
+    overlay.insert(entry);
     _timer = Timer(const Duration(milliseconds: 5200), () async {
       await key.currentState?.dismiss();
-      hide();
+      if (identical(_entry, entry)) hide();
     });
   }
 

@@ -150,6 +150,11 @@ class FriendsService {
       );
       if (outcome == 'already') return const FriendsResult.failed("You're already connected.");
       return const FriendsResult.ok();
+    } on PostgrestException catch (e) {
+      debugPrint('mull: friend request failed ($e)');
+      return FriendsResult.failed(
+        e.code == '54000' ? "That's a lot of requests for one day. Try again tomorrow." : "Couldn't send that. Try again.",
+      );
     } catch (e) {
       debugPrint('mull: friend request failed ($e)');
       return const FriendsResult.failed("Couldn't send that. Try again.");

@@ -20,6 +20,7 @@ import 'auth_service.dart';
 import 'backend.dart';
 import 'error_reporter.dart';
 import 'live_channel.dart';
+import 'receipts.dart';
 
 class GroupsSync {
   GroupsSync(this._store);
@@ -78,6 +79,13 @@ class GroupsSync {
   Future<bool?> _hasReceipts() async =>
       _receipts ??= await _probe(() => Backend.client.from('expenses').select('receipt_path').limit(1));
 
+  /// Whether the 2026-09-29 migration is in: the day of the month a schedule
+  /// belongs on, kept apart from the date it is next due.
+  bool? _anchor;
+
+  Future<bool?> _hasAnchor() async =>
+      _anchor ??= await _probe(() => Backend.client.from('recurring_expenses').select('anchor_day').limit(1));
+
   /// True if the query works, false if Postgres says the table or column does
   /// not exist, and null for anything else — no signal, an expired token —
   /// which says nothing about the schema and must not be remembered.
@@ -105,6 +113,7 @@ class GroupsSync {
       ..onGroupChanged = ((group) async {
         schedulePush(group.id);
       })
+      ..accountId = (() => Backend.user?.id)
       ..onGroupDeleted = deleteGroup
       ..onLeave = leave
       // [resume] rather than [pull]: every caller of `pullNow()` — a resume, a
@@ -235,6 +244,7 @@ class GroupsSync {
     // Not knowing the schema is not knowing what to ask for. The ledger on
     // screen stays as it is until the next try.
     if (extended == null || settlementExtras == null || await _hasReceipts() == null) return false;
+    if (extended && await _hasAnchor() == null) return false;
     try {
       final revs = await _revisions();
       if (revs == null) {
@@ -325,7 +335,7 @@ class GroupsSync {
                      expense_shares ( member_id, amount ) )${extended ? ''',
           recurring_expenses ( id, description, amount, payer_member_id, method,
                                frequency, next_due, ends_on, paused, auto_add,
-                               last_added_on, created_at, deleted_at,
+                               last_added_on, created_at, deleted_at${_anchor == true ? ', anchor_day' : ''},
                                recurring_shares ( member_id, amount ) )''' : ''},
           settlements ( id, from_member_id, to_member_id, amount, status,
                         utr, claimed_at, confirmed_at${settlementExtras ? ', is_offset, deleted_at' : ''} )
@@ -397,7 +407,8 @@ class GroupsSync {
           method: SplitMethod.values.byName(e['method'] as String? ?? 'equal'),
           recurringId: e['recurring_id'] as String?,
           note: e['note'] as String?,
-          receipt: e['receipt_path'] as String?,
+          // Only a key of the shape this app writes; see [Receipts.isKey].
+          receipt: Receipts.isKey(e['receipt_path'] as String?) ? e['receipt_path'] as String : null,
           receiptRequestedBy: e['receipt_requested_by'] as String?,
           date: DateTime.parse(e['spent_on'] as String),
           createdAt: e['created_at'] == null ? null : _instant(e['created_at']),
@@ -425,6 +436,7 @@ class GroupsSync {
           paused: r['paused'] as bool? ?? false,
           autoAdd: r['auto_add'] as bool? ?? false,
           lastAddedOn: r['last_added_on'] == null ? null : DateTime.parse(r['last_added_on'] as String),
+          anchorDay: (r['anchor_day'] as num?)?.toInt(),
           createdAt: _instant(r['created_at']),
         ),
       );
@@ -519,6 +531,8 @@ class GroupsSync {
     final settlementExtras = await _hasSettlementExtras();
     final receipts = await _hasReceipts();
     if (extended == null || settlementExtras == null || receipts == null) return false;
+    final anchor = extended ? await _hasAnchor() : false;
+    if (anchor == null) return false;
 
     final printed = group.printed;
     bool dirty(String key) => group.isDirty(key, printed[key]!);
@@ -608,6 +622,7 @@ class GroupsSync {
               'paused': r.paused,
               'auto_add': r.autoAdd,
               'last_added_on': r.lastAddedOn == null ? null : _day(r.lastAddedOn!),
+              if (anchor) 'anchor_day': r.anchorDay,
               'created_by': me,
               if (fresh('r:${r.id}')) 'deleted_at': null,
             },
@@ -645,7 +660,25 @@ class GroupsSync {
       // Only the settlements that changed. Re-sending all of them re-sent
       // every stale status this phone held, and the one that was not ours to
       // move took the group's whole sync down with it.
-      final settlements = [for (final s in group.settlements) if (dirty('s:${s.id}')) s];
+      //
+      // A new net-off between two accounts goes up through record_offsets()
+      // first, both halves at once; the upsert below then finds its row there.
+      // If that call fails, the offset waits for the next push rather than
+      // going up on its own, which the server would drop.
+      final waiting = <String>{};
+      final newOffsets = [
+        for (final s in group.settlements)
+          if (s.offset && fresh('s:${s.id}') && _betweenAccounts(group, s)) s,
+      ];
+      if (newOffsets.isNotEmpty) {
+        final recorded = await _recordOffsets();
+        waiting.addAll([for (final s in newOffsets) if (recorded != null && !recorded.contains(s.id)) s.id]);
+        if (waiting.isNotEmpty) _store.setSyncTrouble(true);
+      }
+      final settlements = [
+        for (final s in group.settlements)
+          if (dirty('s:${s.id}') && !waiting.contains(s.id)) s,
+      ];
       if (settlements.isNotEmpty) {
         await db.from('settlements').upsert([
           for (final s in settlements)
@@ -691,6 +724,76 @@ class GroupsSync {
       if (sent.isNotEmpty) _store.announceSync();
       return false;
     }
+  }
+
+  /// Whether both ends of [s] are accounts rather than placeholder seats.
+  /// Your own seat may not carry a userId locally, so `isYou` stands in.
+  static bool _betweenAccounts(Group group, Settlement s) {
+    bool linked(String id) {
+      final m = group.memberById(id);
+      return m != null && (m.isYou || m.isLinked);
+    }
+
+    return linked(s.fromId) && linked(s.toId);
+  }
+
+  /// Null until the server has said whether it has record_offsets().
+  bool? _offsetsByCall;
+
+  /// Sends every net-off this phone has written between two accounts and not
+  /// yet had accepted, across all groups, and returns the ids the server now
+  /// has. Null means every offset may go up as a plain row: a server from
+  /// before record_offsets() existed takes them that way.
+  ///
+  /// All groups, because a net-off is two offsets in two ledgers and the
+  /// server only takes them as a set that cancels out: this group's half on
+  /// its own is a payment nobody made. Per person, so that one half left on
+  /// its own — its partner's group deleted before it synced — waits by itself
+  /// instead of holding up every other net-off with it. Halves the server
+  /// already has are skipped there, so sending one again is harmless.
+  Future<Set<String>?> _recordOffsets() async {
+    if (_offsetsByCall == false) return null;
+    final byPerson = <String, List<Map<String, Object>>>{};
+    final balance = <String, int>{};
+    for (final g in _store.groups) {
+      if (!g.hasReachedServer && !g.acked.containsKey('g')) continue;
+      for (final s in g.settlements) {
+        if (!s.offset || g.acked.containsKey('s:${s.id}') || !_betweenAccounts(g, s)) continue;
+        final fromYou = g.memberById(s.fromId)?.isYou ?? false;
+        final other = g.memberById(fromYou ? s.toId : s.fromId)?.userId;
+        if (other == null) continue;
+        (byPerson[other] ??= []).add({
+          'id': s.id,
+          'group_id': g.id,
+          'from_member_id': s.fromId,
+          'to_member_id': s.toId,
+          'amount': s.amount,
+          'claimed_at': _stamp(s.date),
+        });
+        balance[other] = (balance[other] ?? 0) + (fromYou ? s.amount : -s.amount);
+      }
+    }
+    final recorded = <String>{};
+    try {
+      for (final MapEntry(key: person, value: rows) in byPerson.entries) {
+        if (balance[person] != 0) continue;
+        // One call per person, never split: each call has to cancel out.
+        if (rows.length > 500) continue;
+        await Backend.client.rpc('record_offsets', params: {'offsets': rows});
+        _offsetsByCall = true;
+        recorded.addAll(rows.map((r) => r['id']! as String));
+      }
+    } on PostgrestException catch (e) {
+      if (e.code == 'PGRST202' || e.code == '42883') {
+        _offsetsByCall = false;
+        return null;
+      }
+      debugPrint('mull: record_offsets refused ($e)');
+      ErrorReporter.report(e, StackTrace.current, context: 'record_offsets');
+    } catch (e) {
+      debugPrint('mull: record_offsets failed ($e)');
+    }
+    return recorded;
   }
 
   /// Makes the server's shares for each row exactly what [byParent] says.

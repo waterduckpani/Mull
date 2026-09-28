@@ -1,0 +1,16 @@
+{
+  "name": "mull-migration-tests",
+  "version": "1.0.0",
+  "description": "",
+  "scripts": {
+    "test": "node attacks.mjs && node flows.mjs"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "@electric-sql/pglite": "^0.5.8"
+  },
+  "private": true
+}

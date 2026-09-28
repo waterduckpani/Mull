@@ -65,8 +65,9 @@ class _FriendsSheetState extends State<_FriendsSheet> {
     }
   }
 
-  /// Remove, report or block. Only for someone with an account: an invite to
-  /// an address nobody has signed up with has nobody behind it to report.
+  /// Remove, report or block. Report and block only for someone with an
+  /// account: an invite to an address nobody has signed up with has nobody
+  /// behind it to report.
   Future<void> _more(Friend friend) async {
     final userId = friend.userId;
     final removeLabel = switch (friend.state) {
@@ -170,7 +171,7 @@ class _FriendsSheetState extends State<_FriendsSheet> {
       unawaited(context.readStore.pullNow());
       await _load();
     } else if (mounted && result.error != null) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(result.error!)));
+      Toast.show(context, result.error!);
     }
   }
 
@@ -204,7 +205,9 @@ class _FriendsSheetState extends State<_FriendsSheet> {
                         busy: _busy,
                         onAccept: () => _act(() => FriendsService.accept(friend.friendshipId)),
                         onRemove: () => _act(() => FriendsService.remove(friend.friendshipId)),
-                        onMore: friend.hasAccount ? () => _more(friend) : null,
+                        // Every row, so a request you sent can be taken back whether or not
+                        // the address has an account. Report and block need one.
+                        onMore: () => _more(friend),
                       ),
                       const SizedBox(height: 4),
                     ],
@@ -273,13 +276,10 @@ class _FriendRow extends StatelessWidget {
 
     final (note, action) = switch (friend.state) {
       FriendState.incoming => ('Wants to be friends', 'Accept'),
-      // Worth saying plainly. A request to an address with no account is not
-      // broken, it is waiting — and the person sending it should know that
-      // nothing happens until the other person turns up.
-      FriendState.outgoing => (
-        friend.hasAccount ? 'Asked, waiting on them' : 'Invited, waiting for them to join Mull',
-        null,
-      ),
+      // One wording whether or not the address has an account. Saying which
+      // told anyone with a list of emails who was on Mull; the server no
+      // longer says either, until they answer.
+      FriendState.outgoing => ('Asked, waiting on them', null),
       FriendState.friends => (friend.upiId ?? 'No UPI ID on their account yet', null),
     };
 

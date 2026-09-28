@@ -32,7 +32,8 @@ int? parseAmount(String input) {
   final m = _amount.firstMatch(s);
   if (m == null) return null;
   final n = double.tryParse(m.group(1)!);
-  if (n == null) return null;
+  // Four hundred nines parse as infinity, and rounding infinity throws.
+  if (n == null || !n.isFinite) return null;
   final multiplier = switch (m.group(2)) {
     'k' || 'thousand' => 1000,
     'l' || 'lac' || 'lacs' || 'lakh' || 'lakhs' => 100000,

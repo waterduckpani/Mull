@@ -212,11 +212,34 @@ class _NextUp extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 20),
-          InlineButton(
-            days <= 0 ? 'Add it now' : 'Add it early',
-            height: 48,
-            expand: true,
-            onTap: () => showDueRecurring(context, group, schedule),
+          Row(
+            children: [
+              Expanded(
+                child: InlineButton(
+                  days <= 0
+                      ? 'Add it now'
+                      : schedule.canAddEarly(now)
+                      ? 'Add it early'
+                      : (schedule.lastAddedOn?.isAfter(dayOf(now)) ?? false)
+                      ? 'Added early'
+                      : 'Not open yet',
+                  height: 48,
+                  expand: true,
+                  onTap: days <= 0 || schedule.canAddEarly(now)
+                      ? () => showDueRecurring(context, group, schedule)
+                      : null,
+                ),
+              ),
+              const SizedBox(width: 8),
+              // The focal card is the only way to this schedule when it is the
+              // only one, so editing and deleting it have to start here too.
+              InlineButton(
+                'Edit',
+                height: 48,
+                filled: false,
+                onTap: () => showRecurringEditor(context, group, existing: schedule),
+              ),
+            ],
           ),
         ],
       ),
@@ -245,7 +268,8 @@ class _ScheduleCard extends StatelessWidget {
 
     // "1st" reads better than "every month" under an EVERY MONTH heading.
     final cadence = switch (schedule.frequency) {
-      Frequency.monthly || Frequency.quarterly || Frequency.yearly => ordinal(schedule.nextDue.day),
+      Frequency.monthly || Frequency.quarterly => ordinal(schedule.anchorDay ?? schedule.nextDue.day),
+      Frequency.yearly => shortDate(schedule.nextDue),
       _ => shortDate(schedule.nextDue),
     };
 

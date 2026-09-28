@@ -84,8 +84,13 @@ class _DueSheetState extends State<_DueSheet> {
 
   bool get _changed => _amount.amount != widget.schedule.amount;
 
+  /// Opened ahead of its date from the Recurring screen, rather than because
+  /// it fell due.
+  bool get _early => !widget.schedule.isDue(context.readStore.now());
+
   void _add() {
     final store = context.readStore;
+    if (_early && !widget.schedule.canAddEarly(store.now())) return;
     store.addDue(
       widget.group,
       widget.schedule,
@@ -121,7 +126,7 @@ class _DueSheetState extends State<_DueSheet> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        const SheetHeader('Due again'),
+        SheetHeader(_early ? 'Coming up' : 'Due again'),
         Expanded(
           child: SingleChildScrollView(
             physics: const BouncingScrollPhysics(),
@@ -194,7 +199,11 @@ class _DueSheetState extends State<_DueSheet> {
                 onTap: _split.isValid ? _add : null,
               ),
               const SizedBox(height: 8),
-              SecondaryButton('Not this time', onTap: _skip),
+              // Early, there is nothing to skip yet: backing out leaves the
+              // schedule exactly where it was.
+              _early
+                  ? SecondaryButton('Not yet', onTap: () => Navigator.of(context).pop())
+                  : SecondaryButton('Not this time', onTap: _skip),
             ],
           ),
         ),
@@ -288,10 +297,12 @@ class _RecurringEditorState extends State<_RecurringEditor> {
         ..shares = _split.shares
         ..method = _split.method
         ..frequency = _frequency
-        ..nextDue = _nextDue
         ..endsOn = _endsOn
         ..autoAdd = _autoAdd
         ..paused = _paused;
+      // Only a date someone actually picked becomes the schedule's day. The
+      // one on screen may be February's 28th standing in for the 31st.
+      if (_nextDue != existing.nextDue) existing.dueOn(_nextDue);
       store.updateRecurring(widget.group, existing);
     } else {
       store.addRecurring(
@@ -344,7 +355,7 @@ class _RecurringEditorState extends State<_RecurringEditor> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Text('Stop ${schedule.description}?', style: excon(26, tracking: -.02, color: sheet.c.ink)),
+            Text('Delete ${schedule.description}?', style: excon(26, tracking: -.02, color: sheet.c.ink)),
             const SizedBox(height: 10),
             Text(
               'The schedule goes. Everything it has already added stays, because '
@@ -352,7 +363,7 @@ class _RecurringEditorState extends State<_RecurringEditor> {
               style: ranade(14, height: 1.6, color: sheet.c.ink3),
             ),
             const SizedBox(height: 24),
-            PillButton('Stop it', onTap: () => Navigator.of(sheet).pop(true)),
+            PillButton('Delete it', onTap: () => Navigator.of(sheet).pop(true)),
             const SizedBox(height: 8),
             SecondaryButton('Keep it', onTap: () => Navigator.of(sheet).pop(false)),
           ],
@@ -365,7 +376,7 @@ class _RecurringEditorState extends State<_RecurringEditor> {
     if (mounted) {
       Toast.show(
         context,
-        'Stopped ${schedule.description}',
+        'Deleted ${schedule.description}',
         action: 'Undo',
         onAction: () => store.restoreRecurring(widget.group, schedule),
       );
@@ -412,10 +423,17 @@ class _RecurringEditorState extends State<_RecurringEditor> {
     if (picked != null && mounted) setState(() => _frequency = picked);
   }
 
+  /// The schedule's day of the month: its own until another date is picked.
+  int get _dayOfMonth {
+    final existing = widget.existing;
+    if (existing != null && _nextDue == existing.nextDue) return existing.anchorDay ?? _nextDue.day;
+    return _nextDue.day;
+  }
+
   /// "5th of the month" reads as a rule; "25 Sep" reads as one date.
   String get _charges => switch (_frequency) {
-    Frequency.monthly => '${ordinal(_nextDue.day)} of the month',
-    Frequency.quarterly => '${ordinal(_nextDue.day)}, every 3 months',
+    Frequency.monthly => '${ordinal(_dayOfMonth)} of the month',
+    Frequency.quarterly => '${ordinal(_dayOfMonth)}, every 3 months',
     Frequency.yearly => '${shortDate(_nextDue)}, every year',
     _ => shortDateWithYear(_nextDue, context.readStore.now()),
   };
@@ -441,7 +459,12 @@ class _RecurringEditorState extends State<_RecurringEditor> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        SheetHeader('Recurring · ${widget.group.title}'),
+        SheetHeader(
+          'Recurring · ${widget.group.title}',
+          // Up here rather than under the toggles, where it sat below the fold
+          // and read as though a schedule could not be deleted at all.
+          action: widget.existing == null ? null : InlineButton('Delete', filled: false, onTap: _delete),
+        ),
         Expanded(
           child: SingleChildScrollView(
             physics: const BouncingScrollPhysics(),
@@ -512,7 +535,7 @@ class _RecurringEditorState extends State<_RecurringEditor> {
                   title: 'Open it automatically',
                   body: yourShare > 0
                       ? 'Everyone gets asked for their ${inr(yourShare)} on the '
-                            '${ordinal(_nextDue.day)}.'
+                            '${ordinal(_dayOfMonth)}.'
                       : 'Mull adds it on the day and tells everyone it did. Only '
                             'for the ones that truly never change.',
                   value: _autoAdd,
@@ -528,8 +551,6 @@ class _RecurringEditorState extends State<_RecurringEditor> {
                     value: _paused,
                     onChanged: (v) => setState(() => _paused = v),
                   ),
-                  const SizedBox(height: 22),
-                  SecondaryButton('Stop this schedule', onTap: _delete),
                 ],
               ],
             ),

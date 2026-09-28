@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
 
 import '../core/money.dart';
@@ -42,6 +43,29 @@ class _PressableState extends State<Pressable> {
     if (_down != v && mounted) setState(() => _down = v);
   }
 
+  /// When this control last fired. A second tap inside [_again] is the same
+  /// intention twice — a double tap on "Add it" while its sheet was closing
+  /// added the expense twice, and on "Yes, I paid" popped the screen behind.
+  ///
+  /// Both clocks have to agree the taps were close. Frame time alone goes
+  /// stale while nothing is animating, so a tap seconds later could read as
+  /// immediate; wall time alone does not move in a widget test's pump.
+  Duration? _lastFrame;
+  DateTime? _lastWall;
+  static const _again = Duration(milliseconds: 350);
+
+  bool _tooSoon() {
+    final frame = SchedulerBinding.instance.currentSystemFrameTimeStamp;
+    final wall = DateTime.now();
+    final close = _lastFrame != null &&
+        _lastWall != null &&
+        frame - _lastFrame! < _again &&
+        wall.difference(_lastWall!) < _again;
+    _lastFrame = frame;
+    _lastWall = wall;
+    return close;
+  }
+
   @override
   Widget build(BuildContext context) {
     final enabled = widget.onTap != null || widget.onLongPress != null;
@@ -57,6 +81,7 @@ class _PressableState extends State<Pressable> {
         onTap: widget.onTap == null
             ? null
             : () {
+                if (_tooSoon()) return;
                 if (widget.haptic) HapticFeedback.selectionClick();
                 widget.onTap!();
               },
@@ -946,6 +971,7 @@ class BigField extends StatelessWidget {
     this.keyboardType,
     this.underline = true,
     this.multiline = false,
+    this.maxLength,
   });
 
   final TextEditingController controller;
@@ -970,6 +996,11 @@ class BigField extends StatelessWidget {
   /// Overrides the keyboard the field would otherwise pick from [numeric]. An
   /// email address wants its own, with the @ to hand.
   final TextInputType? keyboardType;
+
+  /// Characters the field takes. Defaults to 100 on one line and 1,000 for a
+  /// note — past anything anyone types into a split app, and inside what the
+  /// server stores, which refuses longer and would stall the group's sync.
+  final int? maxLength;
 
   @override
   Widget build(BuildContext context) {
@@ -1012,6 +1043,16 @@ class BigField extends StatelessWidget {
                   textInputAction: textInputAction,
                   onChanged: onChanged,
                   onSubmitted: onSubmitted,
+                  inputFormatters: [
+                    LengthLimitingTextInputFormatter(
+                      maxLength ??
+                          (multiline
+                              ? 1000
+                              : keyboardType == TextInputType.emailAddress
+                              ? 254
+                              : 100),
+                    ),
+                  ],
                   decoration: InputDecoration.collapsed(
                     hintText: hint,
                     hintStyle: style.copyWith(color: c.ink3.withValues(alpha: .55)),

@@ -7,6 +7,7 @@
 library;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../../core/money.dart';
 import '../../core/split.dart';
@@ -155,10 +156,13 @@ class SplitModel extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// What was typed for [id], or null for nothing usable. "1e400" parses as
+  /// infinity, and rounding infinity threw in the middle of a build.
   double? _weightOf(String id) {
     final text = weights[id]!.text.trim();
     if (text.isEmpty) return null;
-    return double.tryParse(text);
+    final value = double.tryParse(text);
+    return value == null || !value.isFinite || value > kMaxAmount ? null : value;
   }
 
   /// The split as it currently stands, or an empty map if it does not resolve.
@@ -384,6 +388,7 @@ class _SplitRow extends StatelessWidget {
                     controller: controller,
                     textAlign: TextAlign.right,
                     keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    inputFormatters: [LengthLimitingTextInputFormatter(12)],
                     style: excon(17, color: c.ink),
                     keyboardAppearance: c.isDark ? Brightness.dark : Brightness.light,
                     decoration: InputDecoration(

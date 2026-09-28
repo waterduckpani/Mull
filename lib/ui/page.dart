@@ -72,10 +72,26 @@ class _MullPageState extends State<MullPage> {
   double _bottomHeight = 0;
   bool _overflowing = false;
 
+  /// Content has moved up under the header. Its own flag, not [_overflowing]:
+  /// that one means "more below", and at the very bottom of a long page it is
+  /// false while the page is as far under the header as it ever gets — which
+  /// took the header's backing away and drew it over the text.
+  bool _scrolled = false;
+
+  void _measure(ScrollMetrics m) {
+    final overflowing = m.pixels < m.maxScrollExtent - 4;
+    final scrolled = m.pixels > 4;
+    if (overflowing != _overflowing || scrolled != _scrolled) {
+      setState(() {
+        _overflowing = overflowing;
+        _scrolled = scrolled;
+      });
+    }
+  }
+
   bool _onScroll(ScrollNotification n) {
     if (n.depth != 0) return false;
-    final overflowing = n.metrics.pixels < n.metrics.maxScrollExtent - 4;
-    if (overflowing != _overflowing) setState(() => _overflowing = overflowing);
+    _measure(n.metrics);
     return false;
   }
 
@@ -88,9 +104,7 @@ class _MullPageState extends State<MullPage> {
   /// Content can change height without anyone scrolling, so re-check each frame.
   void _checkOverflow() {
     if (!mounted || !_scroll.hasClients) return;
-    final p = _scroll.position;
-    final overflowing = p.pixels < p.maxScrollExtent - 4;
-    if (overflowing != _overflowing) setState(() => _overflowing = overflowing);
+    _measure(_scroll.position);
   }
 
   @override
@@ -155,7 +169,7 @@ class _MullPageState extends State<MullPage> {
               left: 0,
               right: 0,
               child: _TopFade(
-                visible: _overflowing,
+                visible: _scrolled,
                 top: headerTop,
                 child: Padding(
                   padding: EdgeInsets.fromLTRB(

@@ -37,7 +37,7 @@ Split rent, trips and dinners with the people you actually share money with. One
 
 Mull keeps track of shared money with the people you live, travel and eat with, and settles it over UPI.
 
-Add an expense, pick who paid and how to split it: equally, by exact amounts, by shares or by percentage. Mull works out who owes whom, and the fewest payments that clear a group.
+Add an expense, pick who paid and how to split it: equally, by exact amounts, by shares or by percentage. Mull works out who owes whom, person by person, and cancels debts that point both ways across your groups.
 
 ONE NUMBER PER PERSON
 Owe Ananya for the trip while she owes you for the flat? That is one fact, not two. Mull shows what is actually left between you, and can net the two off so both ledgers are square without anyone sending money.

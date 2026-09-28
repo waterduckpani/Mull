@@ -146,7 +146,15 @@ class _CreateGroupFlowState extends State<CreateGroupFlow> {
   Future<void> _addByHand() async {
     final name = await showAddSomeoneSheet(context);
     if (name == null || !mounted) return;
-    setState(() => _typed.add(name));
+    setState(() {
+      // A one-to-one ledger is with one person: the new name replaces whoever
+      // was picked, as picking a friend replaces a typed name.
+      if (_direct) {
+        _picked.clear();
+        _typed.clear();
+      }
+      _typed.add(name);
+    });
   }
 
   Future<void> _inviteToMull() async {

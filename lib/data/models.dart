@@ -334,13 +334,25 @@ extension FrequencyLabel on Frequency {
   };
 
   /// The next occurrence after [from].
-  DateTime next(DateTime from) => switch (this) {
-    Frequency.weekly => from.add(const Duration(days: 7)),
-    Frequency.fortnightly => from.add(const Duration(days: 14)),
-    Frequency.monthly => addMonths(from, 1),
-    Frequency.quarterly => addMonths(from, 3),
-    Frequency.yearly => addMonths(from, 12),
-  };
+  ///
+  /// [day] is the day of the month the schedule belongs on, for the kinds
+  /// counted in months. Without it the next month is counted from [from]'s
+  /// own day, and a day clamped short by February stayed short for good.
+  DateTime next(DateTime from, {int? day}) {
+    DateTime months(int count) {
+      final landed = addMonths(from, count);
+      final want = day ?? from.day;
+      return DateTime(landed.year, landed.month, want.clamp(1, daysInMonth(landed.year, landed.month)));
+    }
+
+    return switch (this) {
+      Frequency.weekly => from.add(const Duration(days: 7)),
+      Frequency.fortnightly => from.add(const Duration(days: 14)),
+      Frequency.monthly => months(1),
+      Frequency.quarterly => months(3),
+      Frequency.yearly => months(12),
+    };
+  }
 }
 
 /// A standing expense: rent, wifi, the maid, the Netflix everyone chips in for.
@@ -367,6 +379,7 @@ class Recurring {
     this.paused = false,
     this.autoAdd = false,
     this.lastAddedOn,
+    this.anchorDay,
     DateTime? createdAt,
   }) : id = id ?? newId(),
        createdAt = createdAt ?? DateTime.now();
@@ -381,6 +394,17 @@ class Recurring {
 
   /// Local midnight of the day the next occurrence is owed.
   DateTime nextDue;
+
+  /// The day of the month it belongs on — the 31st, even in a month where
+  /// [nextDue] had to be the 30th. Null on a schedule from before this was
+  /// kept, which takes [nextDue]'s day the first time it moves on.
+  int? anchorDay;
+
+  /// Sets when the next one is due, and makes its day the schedule's day.
+  void dueOn(DateTime day) {
+    nextDue = dayOf(day);
+    anchorDay = nextDue.day;
+  }
 
   /// The lease ends in June. Null means it runs until someone stops it.
   DateTime? endsOn;
@@ -402,6 +426,14 @@ class Recurring {
   /// Whether this period is owed as of [now].
   bool isDue(DateTime now) => isActive && !nextDue.isAfter(dayOf(now));
 
+  /// Whether the next occurrence may be added ahead of its date.
+  ///
+  /// Only the one that is coming up, never the one after it: adding or
+  /// skipping early moves [nextDue] on a period, and without this limit each
+  /// tap pushed the schedule another month out — rent could be pre-filed, or
+  /// skipped, indefinitely.
+  bool canAddEarly(DateTime now) => isActive && !nextDue.isAfter(frequency.next(dayOf(now)));
+
   /// Moves the schedule on one period, skipping any it has fallen behind by.
   ///
   /// A phone that was off for three months should not produce three months of
@@ -409,10 +441,11 @@ class Recurring {
   /// silently is how a scheduler turns a holiday into a ₹90,000 surprise.
   void advance(DateTime now) {
     final today = dayOf(now);
-    var next = frequency.next(nextDue);
+    final day = anchorDay ??= nextDue.day;
+    var next = frequency.next(nextDue, day: day);
     var guard = 0;
     while (next.isBefore(today) && guard++ < 600) {
-      next = frequency.next(next);
+      next = frequency.next(next, day: day);
     }
     nextDue = next;
   }
@@ -421,6 +454,9 @@ class Recurring {
   String get syncPrint => [
     description, amount, payerId, _sorted(shares), method.name, frequency.name,
     _day(nextDue), _day(endsOn), paused, autoAdd, _day(lastAddedOn),
+    // Only when set, so a schedule from before keeps the print it was acked
+    // with and is not re-pushed by every phone on update.
+    ?anchorDay,
   ].toString();
 
   Map<String, dynamic> toJson() => {
@@ -436,6 +472,7 @@ class Recurring {
     'paused': paused,
     'autoAdd': autoAdd,
     'lastAddedOn': lastAddedOn?.toIso8601String(),
+    'anchorDay': anchorDay,
     'createdAt': createdAt.toIso8601String(),
   };
 
@@ -452,6 +489,7 @@ class Recurring {
     paused: j['paused'] as bool? ?? false,
     autoAdd: j['autoAdd'] as bool? ?? false,
     lastAddedOn: _date(j['lastAddedOn']),
+    anchorDay: (j['anchorDay'] as num?)?.toInt(),
     createdAt: _date(j['createdAt']),
   );
 }

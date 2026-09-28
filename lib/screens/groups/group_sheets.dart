@@ -723,6 +723,9 @@ class _SettleSheetState extends State<_SettleSheet> {
               _ when _value == null => 'How much is actually changing hands.',
               _ when _value! > _max => 'That is more than the ${inr(_max)} outstanding here.',
               _ when part => '${inr(_max - _value!)} would still be open.',
+              _ when youPay && payee.upiId == null && payee.isLinked =>
+                '${store.shortName(to)} has not added a UPI ID to their account yet. '
+                    'Pay them another way, then mark it here.',
               _ when youPay => 'To ${to.name}${payee.upiId == null ? '' : ' · ${payee.upiId}'}',
               // Money coming to you is the case the old copy got wrong: it is
               // not "between them", it is between them and you.
@@ -749,7 +752,9 @@ class _SettleSheetState extends State<_SettleSheet> {
             SecondaryButton('Already paid, just record it', onTap: _valid ? record : null),
           ] else ...[
             PillButton('Mark as settled', onTap: _valid ? record : null),
-            if (youPay) ...[
+            // Only for a seat with nobody behind it. Someone on Mull adds their
+            // own, and their seat's sheet is read-only.
+            if (youPay && !payee.isLinked) ...[
               const SizedBox(height: 8),
               SecondaryButton(
                 'Add their UPI ID',
@@ -1452,6 +1457,51 @@ Future<bool> confirmLeaveGroup(BuildContext context, Group group) async {
   return left;
 }
 
+/// Asks, then deletes, with an Undo. True once it is gone.
+///
+/// Every way to delete a group comes through here. The long-press on home
+/// used to delete on one tap, for everyone in the group, while settings asked
+/// first and said so.
+Future<bool> confirmDeleteGroup(BuildContext context, Group group) async {
+  final store = context.readStore;
+  final confirmed = await showMullSheet<bool>(
+    context,
+    fitContent: true,
+    builder: (sheet) => Padding(
+      padding: const EdgeInsets.fromLTRB(30, 30, 30, 26),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text('Delete ${group.title}?', style: excon(28, tracking: -.02, color: sheet.c.ink)),
+          const SizedBox(height: 10),
+          Text(
+            [
+              'Every expense goes with it.',
+              // The part the old copy left out, and the part that matters:
+              // this is not "remove it from my phone". A group deleted here
+              // disappears for everyone in it, including the history they
+              // were relying on.
+              if (group.members.length > 1) 'It goes for everyone in it, not just you.',
+              if (!group.isSettled) 'This one is not settled up yet.',
+            ].join(' '),
+            style: ranade(14, height: 1.6, color: sheet.c.ink3),
+          ),
+          const SizedBox(height: 24),
+          PillButton('Delete it', onTap: () => Navigator.of(sheet).pop(true)),
+          const SizedBox(height: 8),
+          SecondaryButton('Keep it', onTap: () => Navigator.of(sheet).pop(false)),
+        ],
+      ),
+    ),
+  );
+  if (confirmed != true || !store.deleteGroup(group)) return false;
+  if (context.mounted) {
+    Toast.show(context, 'Deleted ${group.title}', action: 'Undo', onAction: () => store.restoreGroup(group));
+  }
+  return true;
+}
+
 // ----------------------------------------------------------------- settings
 
 /// A plain label with a value and a chevron, for a row that leaves the sheet.
@@ -1514,46 +1564,8 @@ class _GroupSettingsSheetState extends State<_GroupSettingsSheet> {
   }
 
   Future<void> _delete() async {
-    final store = context.readStore;
     final nav = Navigator.of(context);
-    final group = widget.group;
-    final confirmed = await showMullSheet<bool>(
-      context,
-      fitContent: true,
-      builder: (sheet) => Padding(
-        padding: const EdgeInsets.fromLTRB(30, 30, 30, 26),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Text('Delete ${group.title}?', style: excon(28, tracking: -.02, color: sheet.c.ink)),
-            const SizedBox(height: 10),
-            Text(
-              [
-                'Every expense goes with it.',
-                // The part the old copy left out, and the part that matters:
-                // this is not "remove it from my phone". A group deleted here
-                // disappears for everyone in it, including the history they
-                // were relying on.
-                if (group.members.length > 1) 'It goes for everyone in it, not just you.',
-                if (!group.isSettled) 'This one is not settled up yet.',
-              ].join(' '),
-              style: ranade(14, height: 1.6, color: sheet.c.ink3),
-            ),
-            const SizedBox(height: 24),
-            PillButton('Delete it', onTap: () => Navigator.of(sheet).pop(true)),
-            const SizedBox(height: 8),
-            SecondaryButton('Keep it', onTap: () => Navigator.of(sheet).pop(false)),
-          ],
-        ),
-      ),
-    );
-    if (confirmed != true) return;
-    store.deleteGroup(group);
-    nav.pop('deleted');
-    if (mounted) {
-      Toast.show(context, 'Deleted ${group.title}', action: 'Undo', onAction: () => store.restoreGroup(group));
-    }
+    if (await confirmDeleteGroup(context, widget.group)) nav.pop('deleted');
   }
 
   Future<void> _leave() async {

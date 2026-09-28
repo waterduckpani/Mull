@@ -359,9 +359,15 @@ class _SettleAcrossSheetState extends State<_SettleAcrossSheet> {
   void _record({String? utr}) {
     final standing = _standing!;
     final store = context.readStore;
-    store.settleAcross(standing, amount: _value!, utr: utr);
-    HapticFeedback.mediumImpact();
+    final written = store.settleAcross(standing, amount: _value!, utr: utr);
     Navigator.of(context).pop();
+    // Only say it happened if it did. Nothing is written for someone matched
+    // by name alone across ledgers, whatever the button above promised.
+    if (written.isEmpty) {
+      Toast.show(context, "Couldn't record that here. Settle it in each ledger.");
+      return;
+    }
+    HapticFeedback.mediumImpact();
     Toast.show(
       context,
       _value! == _max

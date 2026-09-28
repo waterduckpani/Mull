@@ -38,6 +38,7 @@ void main() {
     test('refuses what the server cannot store', () {
       expect(parseAmount('2147483647'), kMaxAmount);
       expect(parseAmount('2147483648'), isNull);
+      expect(parseAmount('9' * 400), isNull, reason: 'infinity, which used to throw');
       expect(parseAmount('500cr'), isNull);
       expect(parseAmount('200cr'), 2000000000);
     });
@@ -521,6 +522,50 @@ void main() {
       f.store.skipDue(f.group, f.rent);
       expect(f.group.expenses, isEmpty);
       expect(f.rent.nextDue, DateTime(2026, 11, 1));
+    });
+
+    test('rent on the 31st goes back to the 31st after February', () {
+      // Each month used to be counted from the one before it, so the 28th that
+      // February forced stayed the 28th for good.
+      var now = DateTime(2026, 1, 31, 10);
+      final s = MullStore.memory()..clock = () => now;
+      s.completeOnboarding(name: 'Ananya');
+      s.addGroup('Flat', ['Ritu']);
+      final g = s.groups.single;
+      final rent = s.addRecurring(
+        g,
+        description: 'Rent',
+        amount: 1000,
+        payerId: g.you!.id,
+        shares: {g.you!.id: 1000},
+        startsOn: DateTime(2026, 1, 31),
+      );
+      final seen = <DateTime>[];
+      for (var i = 0; i < 3; i++) {
+        s.addDue(g, rent);
+        seen.add(rent.nextDue);
+        now = rent.nextDue;
+      }
+      expect(seen, [DateTime(2026, 2, 28), DateTime(2026, 3, 31), DateTime(2026, 4, 30)]);
+    });
+
+    test('a period that is not due yet cannot be skipped', () {
+      // Tapping "Not this time" on an early card used to push the date a
+      // month out on every tap.
+      final f = flat();
+      for (var i = 0; i < 5; i++) {
+        f.store.skipDue(f.group, f.rent);
+      }
+      expect(f.rent.nextDue, DateTime(2026, 10, 1));
+    });
+
+    test('only the coming period can be added early', () {
+      final f = flat();
+      expect(f.rent.canAddEarly(f.store.now()), isTrue);
+      f.store.addDue(f.group, f.rent);
+      expect(f.rent.nextDue, DateTime(2026, 11, 1));
+      expect(f.rent.canAddEarly(f.store.now()), isFalse,
+          reason: 'November is more than a month away from 19 September');
     });
 
     test('a phone that was off for months owes one period, not five', () {
@@ -1016,6 +1061,39 @@ void main() {
       store.restoreSettlement(goa, paid);
       expect(goa.yourBalance, 0);
       expect(goa.tombstones, isEmpty);
+    });
+
+    test('a confirmed payment from someone on Mull is theirs to take back, not yours', () {
+      // The payee deleting money they said had arrived is how a debt gets
+      // paid twice. The server refuses it; the app should not offer it.
+      final flat = store.addGroup('Flat', []);
+      final ritu = store.addFriendAsMember(flat, userId: 'ritu-account', name: 'Ritu')!;
+      final paid = Settlement(
+        fromId: ritu.id,
+        toId: flat.you!.id,
+        amount: 800,
+        status: SettlementStatus.confirmed,
+      );
+      flat.settlements.add(paid);
+      expect(store.canRemoveSettlement(flat, paid), isFalse);
+      expect(store.whySettlementStays(flat, paid), contains('Ritu'));
+
+      final mine = store.settleUp(flat, fromId: flat.you!.id, toId: ritu.id, amount: 300);
+      expect(store.canRemoveSettlement(flat, mine), isTrue, reason: 'your own claim is yours to withdraw');
+    });
+
+    test('half of a net-off cannot be removed by hand', () {
+      final her = goa.members.firstWhere((m) => !m.isYou).id;
+      final offset = Settlement(
+        fromId: goa.you!.id,
+        toId: her,
+        amount: 500,
+        status: SettlementStatus.confirmed,
+        offset: true,
+      );
+      goa.settlements.add(offset);
+      expect(store.canRemoveSettlement(goa, offset), isFalse);
+      expect(store.removeSettlement(goa, offset), isFalse);
     });
 
     test('a dispute is not a dead end', () {
