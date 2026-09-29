@@ -1,0 +1,117 @@
+<!doctype html>
+<!--
+  App Store screenshots. Rendered by tool/store_shots.sh, one slide per
+  ?s=N at the store's pixel size. Reads the tour's captures in screenshots/.
+  Each slide: one colour field, a two-line headline, the phone bleeding off
+  the bottom, and one real piece of the screen lifted out of it.
+-->
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  @font-face { font-family: Chillax; src: url(../assets/fonts/Chillax-Semibold.otf); font-weight: 600; }
+  @font-face { font-family: Chillax; src: url(../assets/fonts/Chillax-Medium.otf); font-weight: 500; }
+  @font-face { font-family: Excon; src: url(../assets/fonts/Excon-Medium.otf); font-weight: 500; }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { width: var(--w); height: var(--h); overflow: hidden; }
+  body { background: var(--bg); font-family: Chillax, sans-serif; color: #0e0e0d; position: relative; }
+
+  /* A big soft disc behind the phone, a shade off the field. */
+  .disc { position: absolute; border-radius: 50%; background: var(--disc); }
+
+  .copy { position: absolute; left: 96px; right: 96px; top: 190px; }
+  .eyebrow { font-family: Excon; font-weight: 500; font-size: 38px; letter-spacing: 0.14em; text-transform: uppercase; opacity: 0.62; margin-bottom: 34px; }
+  h1 { font-weight: 600; font-size: 168px; line-height: 0.98; letter-spacing: -0.035em; }
+  h1 em { font-style: normal; color: var(--hi); }
+  .sub { font-family: Excon; font-weight: 500; font-size: 46px; line-height: 1.3; margin-top: 44px; max-width: 980px; opacity: 0.78; }
+
+  .phone { position: absolute; left: 50%; transform: translateX(-50%) rotate(var(--tilt, 0deg)); width: 960px; padding: 22px;
+    background: #0b0b0a; border-radius: 150px;
+    box-shadow: 0 0 0 4px #2b2b29, 0 0 0 6px #111, 0 80px 160px rgba(0,0,0,0.35), 0 30px 60px rgba(0,0,0,0.25); }
+  .phone .screen { position: relative; border-radius: 128px; overflow: hidden; }
+  .phone img { display: block; width: 100%; }
+  .island { position: absolute; top: 34px; left: 50%; transform: translateX(-50%); width: 270px; height: 78px; border-radius: 40px; background: #000; }
+  .status { position: absolute; top: 44px; left: 0; right: 0; display: flex; justify-content: space-between; padding: 0 92px 0 118px;
+    color: #f2f1ec; font-family: Excon; font-weight: 500; font-size: 42px; }
+  .status svg { height: 34px; }
+
+  /* The lifted piece: the real pixels, bigger, tilted, casting a shadow. */
+  .pop { position: absolute; background-repeat: no-repeat; border-radius: var(--r);
+    box-shadow: 0 50px 90px rgba(0,0,0,0.45), 0 12px 24px rgba(0,0,0,0.3), 0 0 0 2px rgba(255,255,255,0.08) inset;
+    transform: rotate(var(--rot, 0deg)); }
+</style>
+</head>
+<body>
+<script>
+// crop: [x, y, w, h] in the capture's own pixels (1206 x 2622).
+const SLIDES = [
+  { bg: '#C9F45C', disc: '#B9E64A', hi: '#FFFFFF', shot: '01-home',
+    eyebrow: 'Split bills with friends', h: 'Settle up.<br><em>Stay friends.</em>',
+    sub: 'Flatmates, trips, dinners. One app keeps it all square.',
+    pop: { crop: [58, 978, 1088, 249], w: 1120, rot: -4, r: 58 } },
+  { bg: '#FF7A45', disc: '#F46A33', hi: '#FFFFFF', shot: '12b-one-person',
+    eyebrow: 'Across every group', h: 'One number<br><em>per person.</em>',
+    sub: 'Owe on the flat, owed on the trip? It nets off.',
+    pop: { crop: [40, 1352, 1126, 290], w: 1140, rot: 3, r: 40 } },
+  { bg: '#9C86FF', disc: '#8C74FA', hi: '#FFFFFF', shot: '02-claim-check',
+    eyebrow: 'No more “I already sent it”', h: 'Paid means<br><em>it arrived.</em>',
+    sub: 'They confirm the money landed before any balance moves.',
+    pop: { crop: [40, 1450, 1126, 810], w: 1000, rot: -3, r: 60 } },
+  { bg: '#62C9FF', disc: '#4DBBF5', hi: '#FFFFFF', shot: '05-settle-up',
+    eyebrow: 'Settle over UPI', h: 'Less paying.<br><em>Zero drama.</em>',
+    sub: 'Mull works out who pays whom. Your UPI app does the rest.',
+    pop: { crop: [58, 807, 1088, 300], w: 1120, rot: -3.5, r: 58 } },
+  { bg: '#FF9ACF', disc: '#F687C2', hi: '#FFFFFF', shot: '08b-add-expense-split',
+    eyebrow: 'Your bill, your rules', h: 'Split it<br><em>any way.</em>',
+    sub: 'Equally, exact amounts, shares or percent.',
+    pop: { crop: [90, 1190, 1026, 136], w: 1100, rot: 3, r: 72 } },
+  { bg: '#FFD84A', disc: '#F5CA33', hi: '#FFFFFF', shot: '03-recurring-due',
+    eyebrow: 'Rent, Wi-Fi, house help', h: 'Monthly bills<br><em>ask first.</em>',
+    sub: 'Rent went up? Change it when it’s due. Nothing adds itself.',
+    pop: { crop: [40, 960, 1126, 420], w: 1120, rot: -3, r: 44 } },
+];
+
+const q = new URLSearchParams(location.search);
+const W = +q.get('w') || 1284, H = +q.get('h') || 2778;
+const s = SLIDES[(+q.get('s') || 1) - 1];
+const k = W / 1284; // everything is laid out at 1284 wide and scaled
+
+document.documentElement.style.cssText =
+  `--w:1284px;--h:${H / k}px;--bg:${s.bg};--disc:${s.disc};--hi:${s.hi};zoom:${k}`;
+
+const S = '../screenshots/';
+document.body.insertAdjacentHTML('beforeend', `
+  <div class="disc" style="width:1500px;height:1500px;left:-110px;top:${1250 + (H / k - 2778) / 2}px"></div>
+  <div class="copy">
+    <div class="eyebrow">${s.eyebrow}</div>
+    <h1>${s.h}</h1>
+    <div class="sub">${s.sub}</div>
+  </div>
+  <div class="phone" style="top:${960 + (H / k - 2778) * 0.6}px">
+    <div class="screen">
+      <img src="${S}${s.shot}.png">
+      <div class="island"></div>
+      <div class="status"><span>9:41</span><svg viewBox="0 0 120 34" fill="#f2f1ec">
+        <rect x="0" y="22" width="8" height="12" rx="2"/><rect x="12" y="15" width="8" height="19" rx="2"/>
+        <rect x="24" y="8" width="8" height="26" rx="2"/><rect x="36" y="1" width="8" height="33" rx="2"/>
+        <rect x="62" y="3" width="50" height="28" rx="8" fill="none" stroke="#f2f1ec" stroke-width="3" opacity=".5"/>
+        <rect x="67" y="8" width="40" height="18" rx="4"/><rect x="114" y="12" width="4" height="10" rx="2" opacity=".5"/>
+      </svg></div>
+    </div>
+  </div>`);
+
+const p = s.pop, [cx, cy, cw, ch] = p.crop, f = p.w / cw;
+// Centre the lifted piece on the spot it came from, so it covers its source.
+const phoneTop = 960 + (H / k - 2778) * 0.6, screen = 916 / 1206;
+const mx = (1284 - 960) / 2 + 22 + (cx + cw / 2) * screen;
+const my = phoneTop + 22 + (cy + ch / 2) * screen;
+const el = document.createElement('div');
+el.className = 'pop';
+el.style.cssText = `left:${mx - p.w / 2}px;top:${my - ch * f / 2}px;width:${p.w}px;height:${ch * f}px;
+  background-image:url(${S}${s.shot}.png);background-size:${1206 * f}px auto;
+  background-position:${-cx * f}px ${-cy * f}px;--rot:${p.rot}deg;--r:${p.r}px`;
+document.body.appendChild(el);
+</script>
+</body>
+</html>

@@ -1,7 +1,7 @@
 # App Store listing
 
 Everything App Store Connect asks for, ready to paste. Screenshots, made by
-`tool/store_shots.py`: `store/screenshots-6.5/` (1284×2778) for the 6.5" slot,
+`tool/store_shots.sh` (from `tool/store_shots.html`): `store/screenshots-6.5/` (1284×2778) for the 6.5" slot,
 which is the one App Store Connect asked for, and `store/screenshots/` (6.9",
 1320×2868) if it ever asks for that instead. Apple scales one set to every
 other iPhone size.
