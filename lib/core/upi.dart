@@ -66,7 +66,7 @@ class UpiApp {
     UpiApp('paytm', 'Paytm', 'paytmmp://pay'),
     UpiApp('cred', 'CRED', 'credpay://upi/pay'),
     UpiApp('bhim', 'BHIM', 'bhim://upi/pay'),
-    UpiApp('fampay', 'FamPay', 'fampay://upi/pay'),
+    UpiApp('fampay', 'FamPay', 'in.fampay.app://upi/pay'),
   ];
 
   static UpiApp? byKey(String? key) =>
