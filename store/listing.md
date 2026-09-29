@@ -91,6 +91,7 @@ Tracking: **No, we do not use data for tracking.**
 | Identifiers → User ID (the account id) | Yes | Yes | No | App Functionality |
 | Financial Info → Other Financial Info (UPI ID) | Yes | Yes | No | App Functionality |
 | User Content → Other User Content (expenses, groups) | Yes | Yes | No | App Functionality |
+| User Content → Photos or Videos (bill photos attached to expenses) | Yes | Yes | No | App Functionality |
 | Diagnostics → Crash Data | Yes | **No** | No | App Functionality |
 
 Everything else: not collected. This matches `ios/Runner/PrivacyInfo.xcprivacy`
