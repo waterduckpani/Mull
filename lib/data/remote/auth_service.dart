@@ -212,8 +212,11 @@ class AuthService {
   /// Supabase's messages are written for developers.
   static String _friendly(AuthException e) {
     final message = e.message.toLowerCase();
-    if (message.contains('expired')) return 'That code has expired. Send a new one.';
-    if (message.contains('invalid')) return "That code didn't match. Try again.";
+    // Supabase says "Token has expired or is invalid" for both, and a resend
+    // retires every earlier code, so the usual cause is an older email.
+    if (message.contains('expired') || message.contains('invalid')) {
+      return "That code didn't work. Use the one in the newest email, or send a new one.";
+    }
     if (message.contains('rate') || message.contains('too many')) {
       return 'Too many tries. Give it a minute.';
     }
