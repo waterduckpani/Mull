@@ -94,7 +94,7 @@ Tracking: **No, we do not use data for tracking.**
 | Diagnostics → Crash Data | Yes | **No** | No | App Functionality |
 
 Everything else: not collected. This matches `ios/Runner/PrivacyInfo.xcprivacy`
-and `site/privacy.html`. Change all three together.
+and `../site/privacy.html` (the site's own folder, next to `app/`). Change all three together.
 
 ## App Review information
 

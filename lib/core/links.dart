@@ -1,4 +1,4 @@
-/// Mull's pages on the web. Source in `site/`.
+/// Mull's pages on the web. Source in `../site/`, next to this app, not in it.
 library;
 
 import 'package:url_launcher/url_launcher.dart';
