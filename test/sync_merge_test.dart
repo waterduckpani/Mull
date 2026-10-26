@@ -47,6 +47,17 @@ void main() {
   Group current() => store.groupById(flat.id)!;
 
   group('a pull around unsent work', () {
+    test('someone the server removed is removed here, even over an unsent edit of their seat', () {
+      final server = serverCopy(current(), edit: (g) => g.memberById(dev)!.removed = true);
+      current().memberById(dev)!.name = 'Dev K';
+
+      store.replaceGroups([server]);
+
+      expect(current().memberById(dev)!.removed, isTrue);
+      expect(current().memberById(dev)!.name, 'Dev K', reason: 'the edit is still waiting to go up');
+      expect(current().seated.map((m) => m.id), [me]);
+    });
+
     test('an edit whose push failed survives the next pull', () {
       // The push never landed, so the server still has 24,000.
       final server = serverCopy(current());

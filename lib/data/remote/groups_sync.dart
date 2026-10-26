@@ -86,6 +86,13 @@ class GroupsSync {
   Future<bool?> _hasAnchor() async =>
       _anchor ??= await _probe(() => Backend.client.from('recurring_expenses').select('anchor_day').limit(1));
 
+  /// Whether the 2026-10-26 migration is in: a settled seat taken out of a
+  /// group, which stays for its history and is marked removed.
+  bool? _removal;
+
+  Future<bool?> _hasRemoval() async =>
+      _removal ??= await _probe(() => Backend.client.from('members').select('removed_at').limit(1));
+
   /// True if the query works, false if Postgres says the table or column does
   /// not exist, and null for anything else — no signal, an expired token —
   /// which says nothing about the schema and must not be remembered.
@@ -116,6 +123,7 @@ class GroupsSync {
       ..accountId = (() => Backend.user?.id)
       ..onGroupDeleted = deleteGroup
       ..onLeave = leave
+      ..onRemoveMember = removeMember
       // [resume] rather than [pull]: every caller of `pullNow()` — a resume, a
       // pull-to-refresh — is someone asking "is this current?", and a dead
       // socket is the most likely reason it is not.
@@ -245,6 +253,7 @@ class GroupsSync {
     // screen stays as it is until the next try.
     if (extended == null || settlementExtras == null || await _hasReceipts() == null) return false;
     if (extended && await _hasAnchor() == null) return false;
+    if (await _hasRemoval() == null) return false;
     try {
       final revs = await _revisions();
       if (revs == null) {
@@ -328,7 +337,7 @@ class GroupsSync {
         .from('groups')
         .select('''
           id, name, created_at${extended ? ', kind, icon' : ''},
-          members ( id, user_id, name, email, phone, upi_id${extended ? ', role' : ''},
+          members ( id, user_id, name, email, phone, upi_id${extended ? ', role' : ''}${_removal == true ? ', removed_at' : ''},
                     account:user_id ( name, upi_id ) ),
           expenses ( id, description, amount, payer_member_id, method, created_at,
                      repeats_monthly, spent_on, deleted_at${extended ? ', recurring_id, note' : ''}${_receipts == true ? ', receipt_path, receipt_requested_by' : ''},
@@ -387,6 +396,7 @@ class GroupsSync {
             phone: m['phone'] as String?,
             userId: m['user_id'] as String?,
             role: MemberRole.values.byName(m['role'] as String? ?? 'member'),
+            removed: m['removed_at'] != null,
           );
         }(),
     ];
@@ -504,6 +514,22 @@ class GroupsSync {
     } catch (e) {
       debugPrint('mull: leave_group failed ($e)');
       if (e is PostgrestException) ErrorReporter.report(e, StackTrace.current, context: 'leave_group');
+      return false;
+    }
+  }
+
+  /// Asks the server to take a settled seat out of a group. It checks again
+  /// that nothing is open; see `remove_member` in the 2026-10-26 migration.
+  /// Pushes first, so the settlement that squared them is there to be seen.
+  Future<bool> removeMember(String groupId, String memberId) async {
+    if (!_live || await _hasRemoval() != true) return false;
+    await push(groupId);
+    try {
+      await Backend.client.rpc('remove_member', params: {'target_member': memberId});
+      return true;
+    } catch (e) {
+      debugPrint('mull: remove_member failed ($e)');
+      if (e is PostgrestException) ErrorReporter.report(e, StackTrace.current, context: 'remove_member');
       return false;
     }
   }

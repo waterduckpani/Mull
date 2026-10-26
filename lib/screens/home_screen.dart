@@ -1068,7 +1068,7 @@ class _LedgerRow extends StatelessWidget {
     }
 
     final roomy = density == _Density.roomy;
-    final others = group.members.where((m) => !m.isYou).toList();
+    final others = group.seated.where((m) => !m.isYou).toList();
     final roster = others.isEmpty
         ? 'Nobody else in here yet'
         : others.length <= 3

@@ -66,7 +66,7 @@ class GroupDetailScreen extends StatelessWidget {
     // A group of one is a group that cannot do anything: every split is a
     // split with yourself. It is easy to end up in by tapping straight through
     // the create flow, so the screen says so rather than looking broken.
-    final alone = group.members.length < 2;
+    final alone = group.seated.length < 2;
 
     // Nothing of yours to pay or collect, and no unlinked seats whose books
     // you keep for them.
@@ -141,12 +141,12 @@ class GroupDetailScreen extends StatelessWidget {
                     Pressable(
                       onTap: () => push(GroupMembersScreen(groupId: group.id)),
                       scale: .97,
-                      semanticLabel: 'People, ${group.members.length}',
+                      semanticLabel: 'People, ${group.seated.length}',
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
                           Text(
-                            group.isDirect ? 'Just you two' : '${group.members.length} people',
+                            group.isDirect ? 'Just you two' : '${group.seated.length} people',
                             style: MullType.caption(c.ink3, size: 12.5),
                           ),
                           const SizedBox(width: 4),
@@ -272,7 +272,7 @@ class GroupDetailScreen extends StatelessWidget {
               detail: group.isDirect
                   ? null
                   : [
-                      '${group.members.length}',
+                      '${group.seated.length}',
                       if (group.youAreAdmin) 'you run it',
                     ].join(' · '),
               lift: Lift.flat,

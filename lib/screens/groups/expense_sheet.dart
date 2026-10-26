@@ -6,6 +6,7 @@ import 'package:image_picker/image_picker.dart';
 
 import '../../core/dates.dart';
 import '../../core/money.dart';
+import '../../core/upi.dart';
 import '../../data/models.dart';
 import '../../data/remote/receipts.dart';
 import '../../data/store.dart';
@@ -93,6 +94,8 @@ class _ExpenseDetailState extends State<_ExpenseDetail> {
     final asker = expense.receiptRequestedBy == null ? null : group.memberById(expense.receiptRequestedBy!);
     final schedule = expense.recurringId == null ? null : group.recurringById(expense.recurringId!);
     String name(Member? m) => m == null ? 'Someone' : store.shortName(m);
+    final canAsk = store.canRequestReceipt(group, expense);
+    final askOffMull = store.canAskOffMull(group, expense);
 
     void run(VoidCallback action) {
       Navigator.of(context).pop();
@@ -159,7 +162,7 @@ class _ExpenseDetailState extends State<_ExpenseDetail> {
                 else if (_uploading)
                   const _BillLine(text: 'Uploading the bill…', busy: true)
                 else ...[
-                  if (expense.receiptRequested)
+                  if (store.receiptAwaited(group, expense))
                     _BillLine(
                       text: youPaid
                           ? '${name(asker)} asked to see the bill.'
@@ -167,6 +170,8 @@ class _ExpenseDetailState extends State<_ExpenseDetail> {
                           ? 'You asked ${name(payer)} for the bill. It shows up here once they add it.'
                           : '${name(asker)} asked ${name(payer)} for the bill.',
                     )
+                  else if (askOffMull)
+                    _BillLine(text: '${name(payer)} is not on Mull. Ask on WhatsApp, then add the photo here.')
                   else
                     const _BillLine(text: 'No photo of the bill on this one.'),
                   const SizedBox(height: 14),
@@ -177,18 +182,20 @@ class _ExpenseDetailState extends State<_ExpenseDetail> {
                           youPaid && expense.receiptRequested ? 'Add the bill' : 'Add a photo',
                           height: 48,
                           expand: true,
-                          filled: youPaid || !store.canRequestReceipt(group, expense),
+                          filled: youPaid || !(canAsk || askOffMull),
                           onTap: () => _attach(group, expense),
                         ),
                       ),
-                      if (store.canRequestReceipt(group, expense)) ...[
+                      if (canAsk || askOffMull) ...[
                         const SizedBox(width: 10),
                         Expanded(
                           child: InlineButton(
-                            'Ask for the bill',
+                            canAsk ? 'Ask for the bill' : 'Ask on WhatsApp',
                             height: 48,
                             expand: true,
-                            onTap: () => _request(group, expense),
+                            onTap: canAsk
+                                ? () => _request(group, expense)
+                                : () => askForBillsOnWhatsApp(context, payer!, [(group, expense)]),
                           ),
                         ),
                       ],
@@ -533,6 +540,21 @@ class AskForBills extends StatelessWidget {
     final store = context.store;
     final toAsk = store.billsToAskFor(seats);
     final asked = store.billsAskedFor(seats);
+    final offMull = store.billsToAskOffMull(seats);
+
+    if (toAsk.isEmpty && offMull.isNotEmpty) {
+      final (group, first) = offMull.first;
+      final payer = group.memberById(first.payerId)!;
+      return Padding(
+        padding: const EdgeInsets.only(bottom: 8),
+        child: SecondaryButton(
+          offMull.length == 1
+              ? 'Ask $name for the bill on WhatsApp'
+              : 'Ask $name for the ${offMull.length} bills on WhatsApp',
+          onTap: () => askForBillsOnWhatsApp(context, payer, offMull),
+        ),
+      );
+    }
     if (toAsk.isEmpty && asked.isEmpty) return const SizedBox.shrink();
 
     if (toAsk.isEmpty) {
@@ -559,4 +581,15 @@ class AskForBills extends StatelessWidget {
       ),
     );
   }
+}
+
+/// Asks someone not on Mull for bills, on WhatsApp. They have no copy of Mull
+/// to put a photo on the expense from, so it comes back to you and you add it.
+Future<void> askForBillsOnWhatsApp(BuildContext context, Member payer, List<(Group, Expense)> items) async {
+  final store = context.readStore;
+  final name = store.shortName(payer);
+  HapticFeedback.mediumImpact();
+  final sent = await shareOnWhatsApp(store.billAskMessage(name, items), phone: payer.phone);
+  if (!context.mounted) return;
+  Toast.show(context, sent ? '$name is not on Mull — sent on WhatsApp' : "Couldn't open WhatsApp");
 }

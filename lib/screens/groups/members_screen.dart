@@ -41,7 +41,8 @@ class GroupMembersScreen extends StatelessWidget {
     // Your own seat carries no account id locally — it is built from the
     // profile, which has none — so asking `isLinked` about yourself says no
     // and the header confidently reported you as not on Mull.
-    final onMull = group.members.where((m) => m.isYou || m.isLinked).length;
+    final people = group.seated;
+    final onMull = people.where((m) => m.isYou || m.isLinked).length;
 
     Future<void> addFromFriends() async {
       final picked = await showFriendPicker(
@@ -93,9 +94,9 @@ class GroupMembersScreen extends StatelessWidget {
           subtitle: group.isDirect
               ? null
               : [
-                  '${group.members.length} ${group.members.length == 1 ? 'person' : 'people'}',
+                  '${people.length} ${people.length == 1 ? 'person' : 'people'}',
                   '$admins ${admins == 1 ? 'admin' : 'admins'}',
-                  if (onMull < group.members.length) '${group.members.length - onMull} not on Mull',
+                  if (onMull < people.length) '${people.length - onMull} not on Mull',
                 ].join(' · '),
           padding: const EdgeInsets.fromLTRB(Gutter.text, 22, Gutter.text, 0),
         ),
@@ -164,7 +165,7 @@ class GroupMembersScreen extends StatelessWidget {
 /// order changes every time somebody pays for something is a list nobody can
 /// find anyone in.
 List<Member> _ordered(Group group) {
-  final members = [...group.members];
+  final members = group.seated;
   members.sort((a, b) {
     if (a.isYou != b.isYou) return a.isYou ? -1 : 1;
     if (a.isAdmin != b.isAdmin) return a.isAdmin ? -1 : 1;

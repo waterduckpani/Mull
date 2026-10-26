@@ -1246,13 +1246,12 @@ class _MemberSheetState extends State<_MemberSheet> {
               'Remove from group',
               destructive: true,
               detail: why == null ? null : 'not possible',
-              onTap: () => _then(() {
-                if (store.removeMember(group, member)) {
-                  HapticFeedback.mediumImpact();
-                  Toast.show(outer, 'Removed ${store.shortName(member)}');
-                } else if (why != null) {
-                  Toast.show(outer, why);
-                }
+              onTap: () => _then(() async {
+                final name = store.shortName(member);
+                final failed = await store.removeMemberEverywhere(group, member);
+                if (!outer.mounted) return;
+                if (failed == null) HapticFeedback.mediumImpact();
+                Toast.show(outer, failed ?? 'Removed $name');
               }),
             ),
           ],
@@ -1482,7 +1481,7 @@ Future<bool> confirmDeleteGroup(BuildContext context, Group group) async {
               // this is not "remove it from my phone". A group deleted here
               // disappears for everyone in it, including the history they
               // were relying on.
-              if (group.members.length > 1) 'It goes for everyone in it, not just you.',
+              if (group.seated.length > 1) 'It goes for everyone in it, not just you.',
               if (!group.isSettled) 'This one is not settled up yet.',
             ].join(' '),
             style: ranade(14, height: 1.6, color: sheet.c.ink3),
@@ -1636,7 +1635,7 @@ class _GroupSettingsSheetState extends State<_GroupSettingsSheet> {
                 _SettingsRow(
                   label: group.isDirect ? 'The two of you' : 'People',
                   value: [
-                    '${group.members.length}',
+                    '${group.seated.length}',
                     if (!group.isDirect && admin) 'you run it',
                   ].join(' · '),
                   onTap: () => Navigator.of(context).pop('people'),

@@ -180,4 +180,44 @@ const extra = process.argv.slice(2);
   await expect('a reminder still sends', () => as(db, U.A, `select public.send_reminder('${U.V}', '${G1}', 'Pay up', '', 100)`), ok);
   await expect('a notice to the group still sends', () => as(db, U.A, `select public.notify('${G1}', array['${U.V}']::uuid[], 'expense_added', 'A added Dinner', '₹500', 500)`), ok);
 }
+// --- removing someone not on Mull once they are settled
+{ const db = await world(extra);
+  const P2 = '20000000-0000-0000-0000-0000000000c2', R1 = '50000000-0000-0000-0000-0000000000e1';
+  const removedAt = (id) => q(db, `select removed_at is not null as removed from public.members where id = '${id}'`);
+  await as(db, U.A, upsert('members', [seat(SEAT.P1, G1, null, 'Rahul', 'member', { email: 'rahul@x.in' }), seat(P2, G1, null, 'Priya')]) +
+    upsert('expenses', [expense(E1, G1, SEAT.A1, 600, U.A)]) +
+    upsert('expense_shares', [{ expense_id: E1, member_id: SEAT.A1, amount: 300 }, { expense_id: E1, member_id: SEAT.P1, amount: 300 }], ['expense_id', 'member_id']));
+  await expect('a placeholder who still owes cannot be removed', () => as(db, U.A, `select public.remove_member('${SEAT.P1}')`), refused);
+  await as(db, U.A, upsert('settlements', [settlement('40000000-0000-0000-0000-0000000000d1', G1, SEAT.P1, SEAT.A1, 300, U.A, { status: 'confirmed', confirmed_at: '2026-09-27T10:00:00Z' })]));
+  await as(db, U.A, upsert('recurring_expenses', [{ id: R1, group_id: G1, description: 'Rent', amount: 1000, payer_member_id: SEAT.A1, method: 'equal',
+      frequency: 'monthly', next_due: '2026-11-01', ends_on: null, paused: false, auto_add: false, last_added_on: null, anchor_day: 1, created_by: U.A, deleted_at: null }]) +
+    upsert('recurring_shares', [{ recurring_id: R1, member_id: SEAT.A1, amount: 500 }, { recurring_id: R1, member_id: SEAT.P1, amount: 500 }], ['recurring_id', 'member_id']));
+  await expect('...nor one still in a repeating expense', () => as(db, U.A, `select public.remove_member('${SEAT.P1}')`), refused);
+  await as(db, U.A, `update public.recurring_expenses set deleted_at = now() where id = '${R1}'`);
+  await expect('a member who is not an admin cannot remove them', () => as(db, U.V, `select public.remove_member('${SEAT.P1}')`), refused);
+  await expect('someone outside the group cannot either', () => as(db, U.F, `select public.remove_member('${SEAT.P1}')`), refused);
+  await expect('the admin removes the settled placeholder', () => as(db, U.A, `select public.remove_member('${SEAT.P1}') as r`), ok);
+  await expect('...the seat stays, marked removed, with no email left to claim it by', () =>
+    q(db, `select removed_at is not null as removed, email from public.members where id = '${SEAT.P1}'`), [{ removed: true, email: null }]);
+  await expect('...and the history behind it is untouched', () => q(db, `select count(*)::int n from public.expense_shares where member_id = '${SEAT.P1}'`), [{ n: 1 }]);
+  await expect('an older phone re-sends the seat as it last saw it', () => as(db, U.V, upsert('members', [seat(SEAT.P1, G1, null, 'Rahul', 'member', { email: 'rahul@x.in' })])), ok);
+  await expect('...and they stay removed', () => removedAt(SEAT.P1), [{ removed: true }]);
+  await expect('nobody can bring them back by writing the column', async () => {
+    await as(db, U.A, `update public.members set removed_at = null where id = '${SEAT.P1}'`).catch(() => {});
+    return removedAt(SEAT.P1); }, [{ removed: true }]);
+  await expect('nobody can mark a seat removed by writing the column', async () => {
+    await as(db, U.A, `update public.members set removed_at = now() where id = '${P2}'`).catch(() => {});
+    return removedAt(P2); }, [{ removed: false }]);
+  await expect('a new seat cannot arrive already removed', async () => {
+    await as(db, U.A, `insert into public.members (id, group_id, user_id, name, role, removed_at) values ('20000000-0000-0000-0000-0000000000c3', '${G1}', null, 'X', 'member', now())`).catch(() => {});
+    return q(db, `select removed_at from public.members where id = '20000000-0000-0000-0000-0000000000c3'`); }, (r) => !Array.isArray(r) || r.length === 0 || r[0].removed_at === null);
+  await expect('someone on Mull cannot be removed this way', () => as(db, U.A, `select public.remove_member('${SEAT.V1}')`), refused);
+  // Square overall but not pair by pair: Priya owes A 100, V owes Priya 100.
+  const E3 = '30000000-0000-0000-0000-0000000000e3', E4 = '30000000-0000-0000-0000-0000000000e4';
+  await as(db, U.A, upsert('expenses', [expense(E3, G1, SEAT.A1, 100, U.A), expense(E4, G1, P2, 100, U.A)]) +
+    upsert('expense_shares', [{ expense_id: E3, member_id: P2, amount: 100 }, { expense_id: E4, member_id: SEAT.V1, amount: 100 }], ['expense_id', 'member_id']));
+  await expect('a placeholder square overall but owing one person and owed by another stays', () => as(db, U.A, `select public.remove_member('${P2}')`), refused);
+  await expect('the group still syncs a normal push afterwards', () => as(db, U.V,
+    upsert('members', [seat(SEAT.A1, G1, U.A, 'A', 'admin'), seat(SEAT.V1, G1, U.V, 'V'), seat(SEAT.P1, G1, null, 'Rahul')])), ok);
+}
 done();

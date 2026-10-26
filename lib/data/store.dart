@@ -219,6 +219,9 @@ class MullStore extends ChangeNotifier {
       if (member.nudges.isEmpty) {
         member.nudges.addAll(local.memberById(member.id)?.nudges ?? const []);
       }
+      // The server's alone to set, so its word holds even over a seat edited
+      // here and not yet sent.
+      if (server.memberById(member.id) case final theirs?) member.removed = theirs.removed;
     }
 
     // Only an admin's rename is kept — anyone else's would be refused by the
@@ -584,7 +587,7 @@ class MullStore extends ChangeNotifier {
         groupId: group.id,
         kind: NoticeKind.addedToGroup,
         title: '${_theirNameFor(group.you!)} added you to ${group.name}',
-        body: '${group.members.length} people',
+        body: '${group.seated.length} people',
       ),
     );
     return group;
@@ -746,24 +749,31 @@ class MullStore extends ChangeNotifier {
         groupId: group.id,
         kind: NoticeKind.addedToGroup,
         title: '${_theirNameFor(group.you ?? member)} added you to ${group.title}',
-        body: '${group.members.length} people',
+        body: '${group.seated.length} people',
       ),
     );
     return member;
   }
 
-  /// Refuses to remove anyone the ledger still depends on — deleting a person
-  /// who paid for dinner would silently rewrite what everyone else owes.
+  /// Refuses to remove anyone the ledger still depends on — taking out a
+  /// person who is still owed for dinner would silently rewrite what everyone
+  /// else owes.
   ///
   /// Two different refusals live here and they are worth telling apart. The
-  /// arithmetic one is absolute: nobody, admin or not, may remove a seat the
-  /// ledger still references. The other is about authority — taking someone
+  /// arithmetic one is absolute: nobody, admin or not, may remove a seat with
+  /// money still open on it. The other is about authority — taking someone
   /// out of a group is an admin's decision — and it does not apply to leaving,
   /// which is always yours.
+  ///
+  /// History alone is not a reason any more. It used to be: anyone named in
+  /// an old expense could never be removed, so a friend added by name for one
+  /// dinner and paid back in full stayed in the group for good. Their seat now
+  /// stays behind for the history and drops out of the list; see
+  /// [removeMemberEverywhere].
   bool canRemoveMember(Group group, Member member) {
-    if (member.isYou || group.isDirect) return false;
+    if (member.isYou || group.isDirect || member.removed) return false;
     if (!group.youAreAdmin) return false;
-    return !_ledgerNeeds(group, member);
+    return _whyLedgerKeeps(group, member) == null;
   }
 
   bool _ledgerNeeds(Group group, Member member) {
@@ -773,23 +783,73 @@ class MullStore extends ChangeNotifier {
     return involved || settled || scheduled;
   }
 
+  /// What in the ledger stops [member] being taken out, in the words to say.
+  /// The same checks the server makes in `remove_member`.
+  String? _whyLedgerKeeps(Group group, Member member) {
+    if (!_ledgerNeeds(group, member)) return null;
+    final name = shortName(member);
+    if (member.isLinked) {
+      return '$name is on Mull and has history here, so only they can leave it.';
+    }
+    if (group.settlements.any(
+      (s) => s.status == SettlementStatus.pending && (s.fromId == member.id || s.toId == member.id),
+    )) {
+      return 'A payment with $name is still waiting to be confirmed. Once it is '
+          'sorted you can remove them.';
+    }
+    if (group.recurring.any((r) => r.payerId == member.id || (r.shares[member.id] ?? 0) > 0)) {
+      return '$name is in a repeating expense here. Take them out of it first.';
+    }
+    // Pair by pair, as the money is counted everywhere else. Square overall
+    // can still be owing one person and owed by another.
+    final open = group.members.any((other) => other.id != member.id && group.pairBalance(member.id, other.id) != 0);
+    if (open) {
+      return '$name still has money open here. Settle up first, or removing '
+          'them would change what everyone else owes.';
+    }
+    return null;
+  }
+
   /// Why the app will not remove someone, in the words it should say.
   String? whyMemberStays(Group group, Member member) {
-    if (member.isYou || group.isDirect) return null;
-    if (_ledgerNeeds(group, member)) {
-      return 'They have paid for something or owe a share. Removing them would '
-          'quietly change what everyone else owes.';
-    }
+    if (member.isYou || group.isDirect || member.removed) return null;
+    if (_whyLedgerKeeps(group, member) case final why?) return why;
     if (!group.youAreAdmin) return 'Only an admin can take someone out of a group.';
     return null;
   }
 
+  /// Deletes a seat nothing refers to. One with history goes through
+  /// [removeMemberEverywhere] instead.
   bool removeMember(Group group, Member member) {
-    if (!canRemoveMember(group, member)) return false;
+    if (!canRemoveMember(group, member) || _ledgerNeeds(group, member)) return false;
     group.members.removeWhere((m) => m.id == member.id);
     _tombstone(group, member.id, TombstoneKind.member);
     _commitGroup(group);
     return true;
+  }
+
+  /// Asks the server to mark a settled seat removed. Supplied by the sync,
+  /// because only the server may set it; null when signed out, where the
+  /// group lives on this phone alone. False if it could not be reached.
+  Future<bool> Function(String groupId, String memberId)? onRemoveMember;
+
+  /// Takes someone out of the group. Null when it worked, or what to say.
+  ///
+  /// A seat nothing refers to is deleted. One with settled history stays in
+  /// the expenses it is part of and is marked removed, on the server first,
+  /// so every phone drops it from the list at once.
+  Future<String?> removeMemberEverywhere(Group group, Member member) async {
+    if (whyMemberStays(group, member) case final why?) return why;
+    final failed = "Couldn't remove ${shortName(member)}.";
+    if (!canRemoveMember(group, member)) return failed;
+    if (!_ledgerNeeds(group, member)) return removeMember(group, member) ? null : failed;
+    final remove = onRemoveMember;
+    if (remove != null && (!group.hasReachedServer || !await remove(group.id, member.id))) {
+      return '$failed Check your connection and try again.';
+    }
+    member.removed = true;
+    _commitGroup(group);
+    return null;
   }
 
   // -------------------------------------------------------------------- admin
@@ -1091,16 +1151,32 @@ class MullStore extends ChangeNotifier {
 
   // ---------------------------------------------------------------- receipts
 
-  /// Whether you can ask to see the bill: it is not yours, it has a share of
-  /// yours in it, and there is no photo on it or request already out.
-  bool canRequestReceipt(Group group, Expense expense) {
+  /// Whether you can ask to see the bill in Mull: it is not yours, it has a
+  /// share of yours in it, whoever paid is on Mull to answer, and there is no
+  /// photo on it or request already out.
+  bool canRequestReceipt(Group group, Expense expense) =>
+      _couldWantBill(group, expense) && _payerOnMull(group, expense) && expense.receiptRequestedBy == null;
+
+  /// Whether to ask for the bill on WhatsApp instead: whoever paid has no
+  /// account, so there is no copy of Mull for a request to reach, and nobody
+  /// who could put the photo on the expense but you.
+  ///
+  /// The button used to ask anyway. The request sat on the expense for good
+  /// ("It shows up here once they add it") and nobody was ever told.
+  bool canAskOffMull(Group group, Expense expense) =>
+      _couldWantBill(group, expense) && group.memberById(expense.payerId) != null && !_payerOnMull(group, expense);
+
+  bool _couldWantBill(Group group, Expense expense) {
     final me = group.you?.id;
-    return me != null &&
-        expense.payerId != me &&
-        (expense.shares[me] ?? 0) > 0 &&
-        expense.receipt == null &&
-        expense.receiptRequestedBy == null;
+    return me != null && expense.payerId != me && (expense.shares[me] ?? 0) > 0 && expense.receipt == null;
   }
+
+  bool _payerOnMull(Group group, Expense expense) => group.memberById(expense.payerId)?.isLinked ?? false;
+
+  /// Whether a request for this bill is out and someone can still answer it.
+  /// One made of a payer not on Mull, by an older version, never can.
+  bool receiptAwaited(Group group, Expense expense) =>
+      expense.receiptRequested && (expense.payerId == group.you?.id || _payerOnMull(group, expense));
 
   /// Asks whoever paid to attach the bill. Goes to the payer alone: they are
   /// the one holding it.
@@ -1117,6 +1193,15 @@ class MullStore extends ChangeNotifier {
           if (e.payerId == entry.value && canRequestReceipt(group, e)) (group, e),
   ];
 
+  /// The open expenses [seats] paid whose bill you could ask for on WhatsApp,
+  /// because whoever paid is not on Mull. See [canAskOffMull].
+  List<(Group, Expense)> billsToAskOffMull(Map<String, String> seats) => [
+    for (final entry in seats.entries)
+      if (groupById(entry.key) case final group?)
+        for (final e in _openExpenses(group))
+          if (e.payerId == entry.value && canAskOffMull(group, e)) (group, e),
+  ];
+
   /// Open expenses [seats] paid where you have already asked for the bill and
   /// it has not come yet.
   List<(Group, Expense)> billsAskedFor(Map<String, String> seats) => [
@@ -1124,11 +1209,20 @@ class MullStore extends ChangeNotifier {
       if (groupById(entry.key) case final group?)
         for (final e in _openExpenses(group))
           if (e.payerId == entry.value &&
-              e.receipt == null &&
-              e.receiptRequestedBy != null &&
+              receiptAwaited(group, e) &&
               e.receiptRequestedBy == group.you?.id)
             (group, e),
   ];
+
+  /// What to send on WhatsApp to ask [name] for these bills.
+  String billAskMessage(String name, List<(Group, Expense)> items) {
+    final expenses = [for (final (_, e) in items) e];
+    final sum = expenses.fold(0, (s, e) => s + e.amount);
+    return expenses.length == 1
+        ? 'Hey $name, could you send me the bill for ${expenses.single.description} (${inr(sum)})?'
+        : 'Hey $name, could you send me the bills for ${_listed(expenses.map((e) => e.description))} '
+            '(${inr(sum)} in all)?';
+  }
 
   Iterable<Expense> _openExpenses(Group group) {
     final settled = settledExpenses(group);
@@ -1931,6 +2025,9 @@ class MullStore extends ChangeNotifier {
       for (final other in group.members) {
         if (other.isYou) continue;
         final amount = group.pairBalance(me, other.id);
+        // Taken out of the group with nothing left open. Somebody they still
+        // split with elsewhere is still listed, from that ledger.
+        if (other.removed && amount == 0) continue;
         final key = _personKey(other);
         final held = byPerson[key];
         // Somebody square in this ledger is still somebody you split with, so

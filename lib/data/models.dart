@@ -91,6 +91,7 @@ class Member {
     this.phone,
     this.userId,
     this.role = MemberRole.member,
+    this.removed = false,
     List<DateTime>? nudges,
   }) : id = id ?? newId(),
        nudges = nudges ?? [];
@@ -118,6 +119,12 @@ class Member {
 
   /// Whether there is a real person behind this seat who could answer.
   bool get isLinked => userId != null;
+
+  /// Taken out of the group once they were settled. The seat stays, because
+  /// old expenses still name it, but it is not offered for anything new — see
+  /// [Group.seated]. Only the server sets it (`remove_member`), so it is not
+  /// part of [syncPrint].
+  bool removed;
 
   /// Their UPI address, so settling up is one tap instead of a screenshot and
   /// a retyped amount.
@@ -162,6 +169,7 @@ class Member {
     'phone': phone,
     'userId': userId,
     'role': role.name,
+    if (removed) 'removed': true,
     'nudges': nudges.map((n) => n.toIso8601String()).toList(),
   };
 
@@ -174,6 +182,7 @@ class Member {
     phone: j['phone'] as String?,
     userId: j['userId'] as String?,
     role: MemberRole.values.byName(j['role'] as String? ?? 'member'),
+    removed: j['removed'] as bool? ?? false,
     // A file written before the allowance became two a day has one date under
     // the old name. It still counts, so it is read as a list of one rather
     // than thrown away — otherwise updating the app hands everyone a fresh
@@ -723,6 +732,11 @@ class Group {
 
   Member? memberById(String id) => members.where((m) => m.id == id).firstOrNull;
   Member? get you => members.where((m) => m.isYou).firstOrNull;
+
+  /// Everyone still in the group: who it lists, counts and splits new bills
+  /// between. [members] also holds the people taken out of it, whose seats
+  /// old expenses still point at, and every sum goes on counting them.
+  List<Member> get seated => members.where((m) => !m.removed).toList();
 
   List<Member> get admins => members.where((m) => m.isAdmin).toList();
 

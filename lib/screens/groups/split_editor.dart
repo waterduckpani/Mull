@@ -30,17 +30,18 @@ class SplitModel extends ChangeNotifier {
     SplitMethod method = SplitMethod.equal,
     Map<String, int>? shares,
     int amount = 0,
-  }) : payerId = payerId ?? group.you?.id ?? group.members.first.id,
+  }) : payerId = payerId ?? group.you?.id ?? group.seated.first.id,
+       people = _peopleFor(group, payerId, shares),
        _method = method,
        _amount = amount,
        _original = shares == null ? null : Map.of(shares),
        _originalAmount = amount,
        included = shares == null
-           ? group.members.map((m) => m.id).toSet()
+           ? group.seated.map((m) => m.id).toSet()
            : shares.keys.toSet() {
     final ratios = shares == null ? const <String, int>{} : _ratiosOf(shares);
     final percents = shares == null || amount <= 0 ? const <String, int>{} : _percentsOf(shares, amount);
-    for (final m in group.members) {
+    for (final m in people) {
       final share = shares?[m.id];
       weights[m.id] = TextEditingController(
         text: switch (method) {
@@ -97,6 +98,16 @@ class SplitModel extends ChangeNotifier {
   final Group group;
   String payerId;
 
+  /// Who can pay or be in the split: everyone still in the group, and anyone
+  /// since taken out of it who is already in the expense being edited, so an
+  /// edit does not quietly drop their share.
+  final List<Member> people;
+
+  static List<Member> _peopleFor(Group group, String? payerId, Map<String, int>? shares) => [
+    for (final m in group.members)
+      if (!m.removed || m.id == payerId || (shares?.containsKey(m.id) ?? false)) m,
+  ];
+
   /// Who the bill is divided between — the whole group unless someone sat out.
   Set<String> included;
 
@@ -122,16 +133,16 @@ class SplitModel extends ChangeNotifier {
 
     if (wasEqual) {
       // Leaving Equally: anyone ticked out has no business keeping a number.
-      for (final m in group.members) {
+      for (final m in people) {
         if (!included.contains(m.id)) weights[m.id]!.text = '';
       }
     } else if (value == SplitMethod.equal) {
       // Arriving at Equally: the ticks should say what the numbers said.
       final withValue = {
-        for (final m in group.members)
+        for (final m in people)
           if ((_weightOf(m.id) ?? 0) > 0) m.id,
       };
-      included = withValue.isEmpty ? group.members.map((m) => m.id).toSet() : withValue;
+      included = withValue.isEmpty ? people.map((m) => m.id).toSet() : withValue;
     }
     notifyListeners();
   }
@@ -173,12 +184,12 @@ class SplitModel extends ChangeNotifier {
 
     switch (_method) {
       case SplitMethod.equal:
-        final ids = group.members.map((m) => m.id).where(included.contains).toList();
+        final ids = people.map((m) => m.id).where(included.contains).toList();
         return ids.isEmpty ? const {} : splitEqually(_amount, ids);
 
       case SplitMethod.exact:
         final out = <String, int>{};
-        for (final m in group.members) {
+        for (final m in people) {
           final value = _weightOf(m.id);
           if (value != null && value > 0) out[m.id] = value.round();
         }
@@ -188,7 +199,7 @@ class SplitModel extends ChangeNotifier {
 
       case SplitMethod.percent:
         final w = <String, num>{};
-        for (final m in group.members) {
+        for (final m in people) {
           final value = _weightOf(m.id);
           if (value != null && value > 0) w[m.id] = value;
         }
@@ -204,7 +215,7 @@ class SplitModel extends ChangeNotifier {
 
       case SplitMethod.shares:
         final w = <String, num>{};
-        for (final m in group.members) {
+        for (final m in people) {
           final value = _weightOf(m.id);
           if (value != null && value > 0) w[m.id] = value;
         }
@@ -220,7 +231,7 @@ class SplitModel extends ChangeNotifier {
   /// What the percent fields currently add up to.
   int get percentEntered {
     final w = <String, num>{};
-    for (final m in group.members) {
+    for (final m in people) {
       final value = _weightOf(m.id);
       if (value != null && value > 0) w[m.id] = value;
     }
@@ -244,7 +255,7 @@ class SplitModel extends ChangeNotifier {
     }
     if (_method == SplitMethod.exact) {
       var assigned = 0;
-      for (final m in group.members) {
+      for (final m in people) {
         final v = _weightOf(m.id);
         if (v != null && v > 0) assigned += v.round();
       }
@@ -282,7 +293,6 @@ class SplitFields extends StatelessWidget {
   Widget build(BuildContext context) {
     final c = context.c;
     final store = context.store;
-    final group = model.group;
 
     return ListenableBuilder(
       listenable: model,
@@ -297,7 +307,7 @@ class SplitFields extends StatelessWidget {
               spacing: 8,
               runSpacing: 8,
               children: [
-                for (final m in group.members)
+                for (final m in model.people)
                   NameChip(
                     store.shortName(m),
                     selected: m.id == model.payerId,
@@ -314,7 +324,7 @@ class SplitFields extends StatelessWidget {
               onChanged: (i) => model.method = SplitMethod.values[i],
             ),
             const SizedBox(height: 16),
-            for (final m in group.members)
+            for (final m in model.people)
               _SplitRow(
                 key: ValueKey(m.id),
                 name: store.displayName(m),

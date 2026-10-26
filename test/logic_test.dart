@@ -1459,12 +1459,12 @@ void main() {
         shares: splitEqually(900, g.members.map((m) => m.id).toList()),
       );
       expect(s.canRemoveMember(g, sahil), isFalse);
-      expect(s.whyMemberStays(g, sahil), contains('owe a share'));
+      expect(s.whyMemberStays(g, sahil), contains('money open'));
 
       // Dev was in that split too, so the arithmetic refusal now covers him
       // as well — it outranks authority either way. Test the other refusal
       // against someone the ledger has never touched.
-      expect(s.whyMemberStays(g, dev), contains('owe a share'));
+      expect(s.whyMemberStays(g, dev), contains('money open'));
       final bhavya = s.addFriendAsMember(g, userId: newId(), name: 'Bhavya')!;
       expect(s.canRemoveMember(g, bhavya), isTrue);
 

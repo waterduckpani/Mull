@@ -64,7 +64,7 @@ class SettleUpScreen extends StatelessWidget {
               'These are separate people, so they do not cancel out. Each one '
                   'is settled on its own.',
             _ => '${group.title} · ${inr(group.total)} spent between '
-                '${group.members.length} people',
+                '${group.seated.length} people',
           },
           padding: const EdgeInsets.fromLTRB(Gutter.text, 30, Gutter.text, 0),
         ),

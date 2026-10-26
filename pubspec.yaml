@@ -1,7 +1,7 @@
 name: mull
 description: "Mull — split money with people, settled over UPI."
 publish_to: 'none'
-version: 1.0.0+1
+version: 1.0.1+1
 
 environment:
   sdk: ^3.13.0
