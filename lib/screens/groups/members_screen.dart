@@ -18,6 +18,7 @@ import '../../data/models.dart';
 import '../../data/store.dart';
 import '../../ui/icons.dart';
 import '../../ui/page.dart';
+import '../../ui/sheet.dart';
 import '../../ui/tokens.dart';
 import '../../ui/widgets.dart';
 import '../friends_sheet.dart';
@@ -54,6 +55,19 @@ class GroupMembersScreen extends StatelessWidget {
       );
       if (picked == null) return;
       for (final friend in picked) {
+        final email = friend.email;
+        final waiting = email == null ? null : store.seatWaitingFor(group, name: friend.label, email: email);
+        if (waiting != null && context.mounted) {
+          final theirs = waiting.sure ? true : await _isTheSamePerson(context, group, waiting.seat, friend.label);
+          if (theirs == null) continue;
+          if (theirs) {
+            store.handSeatTo(group, waiting.seat, email!);
+            if (context.mounted) {
+              Toast.show(context, '${friend.label} gets ${store.shortName(waiting.seat)}\'s seat next time they open Mull');
+            }
+            continue;
+          }
+        }
         store.addFriendAsMember(
           group,
           userId: friend.userId!,
@@ -301,4 +315,35 @@ class _RoleTag extends StatelessWidget {
       child: Text(label.toUpperCase(), style: eyebrow(c.ink2, size: 9, tracking: .14)),
     );
   }
+}
+
+/// Asks whether a friend being added is the person a hand-added seat was for.
+/// Null if the sheet was dismissed, which adds nobody.
+Future<bool?> _isTheSamePerson(BuildContext context, Group group, Member seat, String friend) {
+  final name = context.readStore.shortName(seat);
+  return showMullSheet<bool>(
+    context,
+    fitContent: true,
+    builder: (sheet) => Padding(
+      padding: const EdgeInsets.fromLTRB(30, 30, 30, 26),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text('Is $friend the $name already here?', style: excon(28, tracking: -.02, color: sheet.c.ink)),
+          const SizedBox(height: 10),
+          Text(
+            'If so, $name\'s seat becomes theirs, with everything already in it, '
+            'the next time they open Mull. Adding them again would split their '
+            'history across two people.',
+            style: ranade(14, height: 1.6, color: sheet.c.ink3),
+          ),
+          const SizedBox(height: 24),
+          PillButton('Yes, give them the seat', onTap: () => Navigator.of(sheet).pop(true)),
+          const SizedBox(height: 8),
+          SecondaryButton('No, someone else', onTap: () => Navigator.of(sheet).pop(false)),
+        ],
+      ),
+    ),
+  );
 }

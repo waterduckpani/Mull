@@ -755,6 +755,34 @@ class MullStore extends ChangeNotifier {
     return member;
   }
 
+  /// A seat already here, added by hand, that may be this friend: the same
+  /// address, or failing that the same name. Adding them as well used to make
+  /// a second seat, with the history and the debts left on the first.
+  ({Member seat, bool sure})? seatWaitingFor(Group group, {required String name, String? email}) {
+    final open = [
+      for (final m in group.seated)
+        if (!m.isYou && !m.isLinked) m,
+    ];
+    final address = email?.trim().toLowerCase();
+    if (address != null && address.isNotEmpty) {
+      final byEmail = open.where((m) => m.email?.trim().toLowerCase() == address).firstOrNull;
+      if (byEmail != null) return (seat: byEmail, sure: true);
+    }
+    final key = name.trim().toLowerCase();
+    final byName = open.where((m) => m.name.trim().toLowerCase() == key && m.email == null).firstOrNull;
+    return byName == null ? null : (seat: byName, sure: false);
+  }
+
+  /// Gives a hand-added seat to the friend it was for, history and all.
+  ///
+  /// Only the server can attach a seat to an account, and only when its owner
+  /// asks (`claim_invitations`, on their next launch). What this phone can do
+  /// is put their address on the seat, which is what that claim looks for.
+  void handSeatTo(Group group, Member seat, String email) {
+    seat.email = email.trim().toLowerCase();
+    _commitGroup(group);
+  }
+
   /// Refuses to remove anyone the ledger still depends on — taking out a
   /// person who is still owed for dinner would silently rewrite what everyone
   /// else owes.
@@ -952,7 +980,16 @@ class MullStore extends ChangeNotifier {
   /// stays in the group under your name, and nobody should find out from a
   /// balance whose owner has quietly vanished.
   Future<bool> leaveGroupEverywhere(Group group) async {
-    if (group.you == null || whyYouCannotLeave(group) != null) return false;
+    // No seat of yours in it: you have already left, and a server from before
+    // 2026-10-27 handed the group back to its creator anyway. The server is
+    // still asked, because that is what stops it being handed back again.
+    if (group.you == null) {
+      if (group.hasReachedServer && onLeave != null && !await onLeave!(group.id)) return false;
+      groups.removeWhere((g) => g.id == group.id);
+      _commit();
+      return true;
+    }
+    if (whyYouCannotLeave(group) != null) return false;
     if (!group.hasReachedServer || onLeave == null) return leaveGroup(group);
     final you = group.you!;
     for (final (other, amount) in openOnLeaving(group)) {

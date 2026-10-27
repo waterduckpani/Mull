@@ -597,14 +597,19 @@ class _FrequencyPicker extends StatelessWidget {
 Future<void> showSettleUp(BuildContext context, Group group, Transfer transfer) => showMullSheet(
   context,
   fitContent: true,
-  builder: (_) => _SettleSheet(group: group, transfer: transfer),
+  builder: (_) => _SettleSheet(group: group, transfer: transfer, behind: context),
 );
 
 class _SettleSheet extends StatefulWidget {
-  const _SettleSheet({required this.group, required this.transfer});
+  const _SettleSheet({required this.group, required this.transfer, required this.behind});
 
   final Group group;
   final Transfer transfer;
+
+  /// The screen under the sheet. A reminder is sent after the sheet closes,
+  /// and its "Nudged" or "sent on WhatsApp" lands there — asked of the sheet's
+  /// own context it was never shown, and the nudge was never counted.
+  final BuildContext behind;
 
   @override
   State<_SettleSheet> createState() => _SettleSheetState();
@@ -683,7 +688,8 @@ class _SettleSheetState extends State<_SettleSheet> {
     /// server — the cap is the feature here as much as the reminder is.
     Future<void> remind() async {
       Navigator.of(context).pop();
-      await remindMember(context, group, from, transfer.amount);
+      if (!widget.behind.mounted) return;
+      await remindMember(widget.behind, group, from, transfer.amount);
     }
 
     return Padding(
@@ -1215,7 +1221,9 @@ class _MemberSheetState extends State<_MemberSheet> {
   Widget? _adminActions(BuildContext context) {
     final store = context.readStore;
     if (!group.youAreAdmin || group.isDirect || member.isYou) return null;
-    final outer = Navigator.of(context).context;
+    // Taken now, while the sheet is alive. The navigator's own context sits
+    // above the app's overlay, so a toast aimed at it found none and crashed.
+    final overlay = Overlay.of(context, rootOverlay: true);
     final lastAdmin = member.isAdmin && group.admins.length < 2;
     final why = store.whyMemberStays(group, member);
     return Column(
@@ -1231,14 +1239,14 @@ class _MemberSheetState extends State<_MemberSheet> {
                   final wasAdmin = member.isAdmin;
                   if (store.setAdmin(group, member, !wasAdmin)) {
                     HapticFeedback.mediumImpact();
-                    Toast.show(
-                      outer,
+                    Toast.showOn(
+                      overlay,
                       wasAdmin
                           ? '${store.shortName(member)} is no longer an admin'
                           : '${store.shortName(member)} can run this group now',
                     );
                   } else {
-                    Toast.show(outer, 'A group needs at least one admin');
+                    Toast.showOn(overlay, 'A group needs at least one admin');
                   }
                 }),
               ),
@@ -1249,9 +1257,9 @@ class _MemberSheetState extends State<_MemberSheet> {
               onTap: () => _then(() async {
                 final name = store.shortName(member);
                 final failed = await store.removeMemberEverywhere(group, member);
-                if (!outer.mounted) return;
+                if (!overlay.mounted) return;
                 if (failed == null) HapticFeedback.mediumImpact();
-                Toast.show(outer, failed ?? 'Removed $name');
+                Toast.showOn(overlay, failed ?? 'Removed $name');
               }),
             ),
           ],

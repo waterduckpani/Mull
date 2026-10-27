@@ -1,5 +1,6 @@
 // The app's own traffic, shaped exactly as groups_sync.dart sends it. Every
 // one of these has to keep working after the migration.
+import { readFileSync } from 'node:fs';
 import { world, as, q, expect, done, U, G1, G2, SEAT } from './harness.mjs';
 const ok = (r) => !(typeof r === 'string' && r.startsWith('ERROR'));
 const refused = (r) => !ok(r);
@@ -125,6 +126,38 @@ const extra = process.argv.slice(2);
   await expect('deleting the account clears their UPI ID from the seat they left', async () => {
     await as(db, U.V, `select public.delete_my_account()`);
     return q(db, `select upi_id, left_by from public.members where id = '${SEAT.V1}'`); }, [{ upi_id: null, left_by: null }]);
+}
+
+// --- the creator leaving: the group must not come back on their next pull
+{ const db = await world(extra);
+  const sees = async (user, g) => (await as(db, user, `select count(*)::int n from public.my_group_revs() where group_id = '${g}'`)).at(-1).rows[0].n;
+  const reads = async (user, g) => (await as(db, user, `select count(*)::int n from public.groups where id = '${g}'`)).at(-1).rows[0].n;
+  await as(db, U.A, `update public.members set role = 'admin' where id in ('${SEAT.V1}', '${SEAT.V2}')`);
+  await as(db, U.A, upsert('expenses', [expense(E1, G1, SEAT.A1, 200, U.A)]) + upsert('expense_shares', [{ expense_id: E1, member_id: SEAT.V1, amount: 200 }], ['expense_id', 'member_id']));
+  await expect('the creator leaves a group with history', () => as(db, U.A, `select public.leave_group('${G1}')`), ok);
+  await expect('...it is no longer in their revisions', () => sees(U.A, G1), 0);
+  await expect('...nor can they read it', () => reads(U.A, G1), 0);
+  await expect('...the others still have it', () => sees(U.V, G1), 1);
+  await expect('...and its expenses still name the seat', () => q(db, `select count(*)::int n from public.expenses where id = '${E1}' and payer_member_id = '${SEAT.A1}'`), [{ n: 1 }]);
+  await expect('the creator leaves a group with no history', () => as(db, U.A, `select public.leave_group('${G2}')`), ok);
+  await expect('...it is no longer in their revisions', () => sees(U.A, G2), 0);
+  await expect('leaving again once out is harmless', () => as(db, U.A, `select public.leave_group('${G1}')`), ok);
+  await expect('the creator column cannot be cleared by a plain update', async () => {
+    await as(db, U.V, `update public.groups set created_by = '${U.V}' where id = '${G1}'`).catch(() => {});
+    return q(db, `select created_by from public.groups where id = '${G1}'`); }, [{ created_by: null }]);
+}
+
+// --- a group handed back by an older build: the migration lets it go
+{ const db = await world(extra);
+  const backfill = readFileSync(new URL('../migrations/20261027100000_leaving_lets_go.sql', import.meta.url), 'utf8').split(/^do \$\$/m)[1];
+  // The state an older leave_group() left behind: seat detached, creator kept.
+  await db.exec(`set session_replication_role = replica;
+    update public.members set user_id = null, left_by = '${U.A}' where id = '${SEAT.A1}';
+    set session_replication_role = origin;`);
+  await expect('before the fix, the leaver still sees the group', () => as(db, U.A, `select count(*)::int n from public.my_group_revs() where group_id = '${G1}'`).then((r) => r.at(-1).rows[0].n), 1);
+  await db.exec('do $$' + backfill);
+  await expect('the backfill lets it go', () => as(db, U.A, `select count(*)::int n from public.my_group_revs() where group_id = '${G1}'`).then((r) => r.at(-1).rows[0].n), 0);
+  await expect('...and leaves the creator of a group they are still in alone', () => q(db, `select created_by from public.groups where id = '${G2}'`), [{ created_by: U.A }]);
 }
 
 // --- friends
