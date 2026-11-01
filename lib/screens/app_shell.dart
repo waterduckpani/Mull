@@ -158,10 +158,16 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
         },
         child: Material(
           color: c.screen,
-          child: Navigator(
-            key: _navigator,
-            onGenerateRoute: (settings) =>
-                CupertinoPageRoute(builder: (_) => const HomeScreen(), settings: settings),
+          // Android's back button reaches the root navigator only, which holds
+          // just this shell; without the handler it closes the app from any
+          // page. It hands the press to the pages' navigator instead.
+          child: NavigatorPopHandler<Object?>(
+            onPopWithResult: (_) => _navigator.currentState?.maybePop(),
+            child: Navigator(
+              key: _navigator,
+              onGenerateRoute: (settings) =>
+                  CupertinoPageRoute(builder: (_) => const HomeScreen(), settings: settings),
+            ),
           ),
         ),
       ),

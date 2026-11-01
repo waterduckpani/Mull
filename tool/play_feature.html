@@ -1,0 +1,40 @@
+<!doctype html>
+<!--
+  Google Play's feature graphic, 1024x500. Slide 1 of the store screenshots
+  turned on its side: the colour field, the headline, the home screen.
+  Render: see the end of tool/store_shots.sh.
+-->
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  @font-face { font-family: Chillax; src: url(../assets/fonts/Chillax-Semibold.otf); font-weight: 600; }
+  @font-face { font-family: Excon; src: url(../assets/fonts/Excon-Medium.otf); font-weight: 500; }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { width: 1024px; height: 500px; overflow: hidden; }
+  body { background: #C9F45C; font-family: Chillax, sans-serif; color: #0e0e0d; position: relative; }
+  .disc { position: absolute; border-radius: 50%; background: #B9E64A; width: 760px; height: 760px; left: 520px; top: -40px; }
+  .copy { position: absolute; left: 64px; top: 92px; width: 520px; }
+  .brand { font-weight: 600; font-size: 40px; letter-spacing: -0.02em; margin-bottom: 30px; }
+  h1 { font-weight: 600; font-size: 84px; line-height: 0.98; letter-spacing: -0.035em; }
+  h1 em { font-style: normal; color: #fff; }
+  .sub { font-family: Excon; font-weight: 500; font-size: 24px; margin-top: 26px; opacity: 0.78; }
+  /* Keep the right half calm: Play may lay a play button or text over the centre. */
+  .phone { position: absolute; left: 640px; top: 60px; width: 330px; padding: 9px; background: #0b0b0a; border-radius: 52px;
+    transform: rotate(6deg);
+    box-shadow: 0 0 0 2px #2b2b29, 0 40px 80px rgba(0,0,0,0.35); }
+  .phone .screen { border-radius: 44px; overflow: hidden; position: relative; }
+  .phone img { display: block; width: 100%; }
+  .hole { position: absolute; top: 14px; left: 50%; width: 16px; height: 16px; margin-left: -8px; border-radius: 50%; background: #000; }
+</style>
+</head>
+<body>
+  <div class="disc"></div>
+  <div class="copy">
+    <div class="brand">mull</div>
+    <h1>Settle up.<br><em>Stay friends.</em></h1>
+    <div class="sub">Split bills. Settle over UPI.</div>
+  </div>
+  <div class="phone"><div class="screen"><img src="../screenshots/01-home.png"><div class="hole"></div></div></div>
+</body>
+</html>

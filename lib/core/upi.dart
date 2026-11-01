@@ -5,6 +5,8 @@
 /// screenshotting a balance and retyping the amount into GPay.
 library;
 
+import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 /// `nobody@bank` — deliberately loose. Banks and PSPs invent new handles
@@ -44,7 +46,7 @@ Uri upiPaymentUri({required String upiId, required String name, required int amo
 /// PhonePe or Paytm the person actually pays with. Each app's own scheme
 /// takes the same query and goes straight to that app.
 class UpiApp {
-  const UpiApp(this.key, this.label, this.prefix);
+  const UpiApp(this.key, this.label, this.prefix, [this.package]);
 
   /// Stored in the profile. Never change one once shipped.
   final String key;
@@ -52,6 +54,11 @@ class UpiApp {
 
   /// Everything before the `?`. The query is the standard UPI one.
   final String prefix;
+
+  /// The Android package. Android pays through `upi://pay` addressed to this
+  /// package (see MainActivity.kt), so [prefix] is iOS only. Each one must
+  /// also be under `<queries>` in AndroidManifest.xml.
+  final String? package;
 
   /// iOS's pick among whatever registered `upi:`. Last resort, and what the
   /// app did for everyone before.
@@ -61,16 +68,15 @@ class UpiApp {
   /// under LSApplicationQueriesSchemes in Info.plist, or iOS answers "not
   /// installed" whatever the truth.
   static const all = [
-    UpiApp('gpay', 'Google Pay', 'tez://upi/pay'),
-    UpiApp('phonepe', 'PhonePe', 'phonepe://pay'),
-    UpiApp('paytm', 'Paytm', 'paytmmp://pay'),
-    UpiApp('cred', 'CRED', 'credpay://upi/pay'),
-    UpiApp('bhim', 'BHIM', 'bhim://upi/pay'),
-    UpiApp('fampay', 'FamPay', 'in.fampay.app://upi/pay'),
+    UpiApp('gpay', 'Google Pay', 'tez://upi/pay', 'com.google.android.apps.nbu.paisa.user'),
+    UpiApp('phonepe', 'PhonePe', 'phonepe://pay', 'com.phonepe.app'),
+    UpiApp('paytm', 'Paytm', 'paytmmp://pay', 'net.one97.paytm'),
+    UpiApp('cred', 'CRED', 'credpay://upi/pay', 'com.dreamplug.androidapp'),
+    UpiApp('bhim', 'BHIM', 'bhim://upi/pay', 'in.org.npci.upiapp'),
+    UpiApp('fampay', 'FamPay', 'in.fampay.app://upi/pay', 'com.fampay.in'),
   ];
 
-  static UpiApp? byKey(String? key) =>
-      key == any.key ? any : all.where((a) => a.key == key).firstOrNull;
+  static UpiApp? byKey(String? key) => key == any.key ? any : all.where((a) => a.key == key).firstOrNull;
 
   Uri uriFor(Uri payment) => Uri.parse('$prefix?${payment.query}');
 
@@ -78,8 +84,21 @@ class UpiApp {
   Uri? get home => key == any.key ? null : Uri.parse('${prefix.split('://').first}://');
 }
 
+/// Android's side of the picker, in MainActivity.kt.
+const _android = MethodChannel('mull/upi');
+
+bool get _isAndroid => defaultTargetPlatform == TargetPlatform.android;
+
 /// The UPI apps on this phone, in picker order. Empty on the simulator.
 Future<List<UpiApp>> installedUpiApps() async {
+  if (_isAndroid) {
+    try {
+      final packages = (await _android.invokeListMethod<String>('installed')) ?? const [];
+      return UpiApp.all.where((a) => packages.contains(a.package)).toList();
+    } catch (_) {
+      return const [];
+    }
+  }
   final found = <UpiApp>[];
   for (final app in UpiApp.all) {
     try {
@@ -104,6 +123,15 @@ Future<bool> openUpiPayment({
   UpiApp? app,
 }) async {
   final payment = upiPaymentUri(upiId: upiId, name: name, amount: amount, note: note);
+  if (_isAndroid) {
+    final package = app?.package;
+    try {
+      if (await _android.invokeMethod<bool>('pay', {'uri': '$payment', 'package': package}) == true) return true;
+      // The named app went away since the picker looked. Offer the rest.
+      if (package != null) return await _android.invokeMethod<bool>('pay', {'uri': '$payment'}) == true;
+    } catch (_) {}
+    return false;
+  }
   final uri = app == null || app.key == UpiApp.any.key ? payment : app.uriFor(payment);
   try {
     if (await launchUrl(uri, mode: LaunchMode.externalApplication)) return true;
@@ -120,6 +148,15 @@ Future<bool> openUpiPayment({
 
 /// Opens [app] with nothing filled in, for paying by hand.
 Future<bool> openUpiAppBlank(UpiApp app) async {
+  if (_isAndroid) {
+    final package = app.package;
+    if (package == null) return false;
+    try {
+      return await _android.invokeMethod<bool>('open', {'package': package}) == true;
+    } catch (_) {
+      return false;
+    }
+  }
   final home = app.home;
   if (home == null) return false;
   try {

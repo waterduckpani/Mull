@@ -5,6 +5,7 @@
 /// again. The choice lives on the profile screen after that.
 library;
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -25,7 +26,7 @@ Future<UpiApp?> chooseUpiApp(BuildContext context, {bool ask = false}) async {
   final saved = UpiApp.byKey(store.profile.payWith);
   if (!ask) {
     if (saved != null && (saved == UpiApp.any || installed.contains(saved))) return saved;
-    // Nothing Mull knows by name. iOS may still have something for `upi:`.
+    // Nothing Mull knows by name. The phone may still have something for `upi:`.
     if (installed.isEmpty) return UpiApp.any;
     if (installed.length == 1) return installed.single;
   }
@@ -52,7 +53,9 @@ Future<UpiApp?> chooseUpiApp(BuildContext context, {bool ask = false}) async {
                 SheetAction(
                   app.label,
                   detail: app == UpiApp.any
-                      ? 'iPhone picks, sometimes WhatsApp'
+                      ? (defaultTargetPlatform == TargetPlatform.android
+                            ? 'You pick each time'
+                            : 'iPhone picks, sometimes WhatsApp')
                       : (app == saved ? 'current' : null),
                   onTap: () => Navigator.of(sheet).pop(app),
                 ),
@@ -65,9 +68,11 @@ Future<UpiApp?> chooseUpiApp(BuildContext context, {bool ask = false}) async {
   if (picked == null) return null;
   HapticFeedback.selectionClick();
   // Choosing again is also how someone asks for a filled-in payment back.
-  store.updateProfile((p) => p
-    ..payWith = picked.key
-    ..payByHand = [...p.payByHand.where((k) => k != picked.key)]);
+  store.updateProfile(
+    (p) => p
+      ..payWith = picked.key
+      ..payByHand = [...p.payByHand.where((k) => k != picked.key)],
+  );
   return picked;
 }
 

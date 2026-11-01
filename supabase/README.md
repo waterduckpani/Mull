@@ -32,13 +32,14 @@ supabase db push
 
 **3. Attach custom SMTP.** Supabase will not let you edit email templates on the
 built-in mailer, and the templates are what turn a magic link into a code — so
-this comes first. Mull uses Resend on `mull.oblunestudio.com`. Authentication →
+this comes first. Mull uses Resend on `mullapp.in` (on `mull.oblunestudio.com`
+until 2026-09-30, which Resend still keeps verified). Authentication →
 Emails → SMTP Settings. (Set up and working as of 2026-09-17; this is the
 recipe, not a to-do.)
 
 | Field    | Value                           |
 | -------- | ------------------------------- |
-| Sender   | `noreply@mull.oblunestudio.com` |
+| Sender   | `noreply@mullapp.in`            |
 | Host     | `smtp.resend.com`               |
 | Port     | `465`                           |
 | Username | `resend` — the literal word     |
@@ -47,7 +48,7 @@ recipe, not a to-do.)
 The API key goes in **Password**; a key in the Username field gives you
 `535 authentication failed` and no other clue. The domain must read *Verified*
 in Resend first — its DNS names are shown fully-qualified but most panels want
-them relative, so `send.mull.oblunestudio.com` is entered as `send.mull`.
+them relative, so `send.mullapp.in` is entered as `send`.
 
 Then Authentication → Rate Limits → *emails*: the built-in cap of a couple per
 hour does not lift by itself when SMTP is attached. 30/hour is sane; Resend's

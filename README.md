@@ -13,7 +13,7 @@
 **Split money with the people you live, travel and eat with, and settle it over UPI.**<br>
 <sub>iOS app · Flutter · Supabase · India</sub>
 
-[Overview](#overview) · [Highlights](#highlights) · [How it works](#how-it-works) · [Getting started](#getting-started) · [Status](#status-and-roadmap) · [Website](https://mull.oblunestudio.com)
+[Overview](#overview) · [Highlights](#highlights) · [How it works](#how-it-works) · [Getting started](#getting-started) · [Status](#status-and-roadmap) · [Website](https://www.mullapp.in)
 
 </div>
 
@@ -183,7 +183,7 @@ Version 1.0.0, prepared for its first App Store release in India.
 
 Source-available, not open source. See [LICENSE](LICENSE).
 
-[Website](https://mull.oblunestudio.com) · [Privacy](https://mull.oblunestudio.com/privacy.html) · [Support](https://mull.oblunestudio.com/support.html)
+[Website](https://www.mullapp.in) · [Privacy](https://www.mullapp.in/privacy.html) · [Support](https://www.mullapp.in/support.html)
 
 ---
 

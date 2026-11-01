@@ -4,7 +4,9 @@ library;
 import 'package:url_launcher/url_launcher.dart';
 
 class MullLinks {
-  static const site = 'https://mull.oblunestudio.com';
+  /// Build 44 and earlier have mull.oblunestudio.com built in; it 308s here,
+  /// so that redirect has to outlive every install of them.
+  static const site = 'https://www.mullapp.in';
   static final privacy = Uri.parse('$site/privacy.html');
   static final terms = Uri.parse('$site/terms.html');
   static final support = Uri.parse('$site/support.html');

@@ -236,7 +236,7 @@ otp_expiry = 3600
 # Use a production-ready SMTP server
 #
 # NOTE: Mull's real SMTP lives in the hosted dashboard (Resend, sending as
-# noreply@mull.oblunestudio.com) and is deliberately NOT mirrored here, because
+# noreply@mullapp.in) and is deliberately NOT mirrored here, because
 # that would mean an API key in the repo. The consequence: `supabase config
 # push` would send this commented-out block as enabled = false and disable
 # custom SMTP on the live project, which locks the email templates and stops

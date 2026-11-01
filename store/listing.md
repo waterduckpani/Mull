@@ -25,9 +25,13 @@ other iPhone size.
 
 | Field | Value |
 |---|---|
-| Privacy Policy URL | https://mull.oblunestudio.com/privacy.html |
-| Support URL | https://mull.oblunestudio.com/support.html |
-| Marketing URL | https://mull.oblunestudio.com |
+| Privacy Policy URL | https://www.mullapp.in/privacy.html |
+| Support URL | https://www.mullapp.in/support.html |
+| Marketing URL | https://www.mullapp.in/ |
+
+1.0 (build 44) went to review with the `mull.oblunestudio.com` versions of these,
+which 308 to the ones above. The review login below stays on the old domain on
+purpose: it's a name, not a mailbox.
 
 ## Promotional text (170)
 

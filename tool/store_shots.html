@@ -112,6 +112,9 @@ el.style.cssText = `left:${mx - p.w / 2}px;top:${my - ch * f / 2}px;width:${p.w}
   background-image:url(${S}${s.shot}.png);background-size:${1206 * f}px auto;
   background-position:${-cx * f}px ${-cy * f}px;--rot:${p.rot}deg;--r:${p.r}px`;
 document.body.appendChild(el);
+// Play: a punch-hole camera, not an iPhone's island.
+if (q.has('android')) document.querySelector('.island').style.cssText =
+  'width:46px;height:46px;border-radius:50%;top:40px';
 </script>
 </body>
 </html>

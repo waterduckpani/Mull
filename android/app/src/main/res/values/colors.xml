@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- The App Store icon's background, so the two stores show the same mark. -->
+    <color name="ic_launcher_background">#131210</color>
+    <!-- iOS's LaunchBackground and the dark theme's screen colour. -->
+    <color name="launch_background">#0B0B0A</color>
+</resources>
