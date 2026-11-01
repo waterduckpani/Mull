@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "658311668776",
+    "project_id": "mull-d75d7",
+    "storage_bucket": "mull-d75d7.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:658311668776:android:0f980b0a43ecf5e78b811d",
+        "android_client_info": {
+          "package_name": "in.mull.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBWXS3OZoiJKB_B3VkZhgi-c5yL1tLzAdU"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
