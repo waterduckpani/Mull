@@ -5,6 +5,7 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
+import android.os.Bundle
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
@@ -17,10 +18,31 @@ import io.flutter.plugin.common.MethodChannel
  * UPI app answers `upi://pay`, and an intent can be addressed to one app by
  * its package. So the Dart side asks here which apps answer, and pays by
  * package rather than by scheme.
+ *
+ * Push lives in PushChannel; this only passes it the intents and permission
+ * answers that Android gives the activity.
  */
 class MainActivity : FlutterActivity() {
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        PushChannel.didOpen(intent)
+    }
+
+    // singleTop: a tap while Mull is open arrives here, not in onCreate.
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        PushChannel.didOpen(intent)
+    }
+
+    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        PushChannel.onPermissionResult(this, requestCode, grantResults)
+    }
+
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+        PushChannel.attach(flutterEngine.dartExecutor.binaryMessenger, this)
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "mull/upi").setMethodCallHandler { call, result ->
             when (call.method) {
                 "installed" -> result.success(upiPackages())

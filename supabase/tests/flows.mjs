@@ -253,4 +253,21 @@ const extra = process.argv.slice(2);
   await expect('the group still syncs a normal push afterwards', () => as(db, U.V,
     upsert('members', [seat(SEAT.A1, G1, U.A, 'A', 'admin'), seat(SEAT.V1, G1, U.V, 'V'), seat(SEAT.P1, G1, null, 'Rahul')])), ok);
 }
+
+// --- push tokens: an iPhone's APNs token and an Android phone's FCM token
+{ const db = await world(extra);
+  const apns = 'ab'.repeat(32), fcm = 'dXy3_Fk-QeS:APA91bH' + 'x'.repeat(140);
+  await expect('an iPhone registers its APNs token, as builds already out there do', () => as(db, U.A,
+    `select public.register_push_token('${apns}', 'production')`), ok);
+  await expect('an Android phone registers its FCM token', () => as(db, U.A,
+    `select public.register_push_token('${fcm}', 'fcm')`), ok);
+  await expect('...and both are kept, each with its kind', () => q(db,
+    `select environment from public.push_tokens where user_id = '${U.A}' order by environment`), [{ environment: 'fcm' }, { environment: 'production' }]);
+  await expect('an FCM token is not taken as an APNs one', () => as(db, U.A,
+    `select public.register_push_token('${fcm}', 'production')`), refused);
+  await expect('nor is junk taken as an FCM token', () => as(db, U.A,
+    `select public.register_push_token('not a token; drop table x', 'fcm')`), refused);
+  await expect('the Android phone signs out and forgets its token', () => as(db, U.A,
+    `select public.unregister_push_token('${fcm}')`), ok);
+}
 done();

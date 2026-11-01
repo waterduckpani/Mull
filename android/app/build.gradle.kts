@@ -6,6 +6,13 @@ plugins {
     id("dev.flutter.flutter-gradle-plugin")
 }
 
+// Push goes through Firebase Cloud Messaging, which needs the project's
+// google-services.json (Firebase console → Project settings → Your apps).
+// Until it is there the app still builds, and push simply stays off.
+if (file("google-services.json").exists()) {
+    apply(plugin = "com.google.gms.google-services")
+}
+
 // The upload key. Not in git: android/key.properties points at a keystore in
 // app/.secrets/ (see tool/android-keystore.sh). Without it a release build
 // falls back to the debug key, which Play refuses, so nothing ships by accident.
@@ -64,4 +71,9 @@ kotlin {
 
 flutter {
     source = "../.."
+}
+
+dependencies {
+    implementation(platform("com.google.firebase:firebase-bom:35.1.0"))
+    implementation("com.google.firebase:firebase-messaging")
 }

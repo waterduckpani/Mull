@@ -1,4 +1,5 @@
-// Sends one notice to its recipient's phones through APNs.
+// Sends one notice to its recipient's phones: iPhones through APNs, Android
+// phones through Firebase Cloud Messaging.
 //
 // Called by the database, not by the app: the `push_notice` trigger on
 // public.notices posts `{ notice_id }` here through pg_net after the insert
@@ -18,7 +19,11 @@
 //   APNS_TEAM_ID         B3F76H2UHH
 //   APNS_PRIVATE_KEY     the .p8 file's contents, BEGIN/END lines included
 //   APNS_TOPIC           in.mull.app
+//   FCM_SERVICE_ACCOUNT  the Firebase service account's JSON key, whole
 //   PUSH_WEBHOOK_SECRET  the same value as the `push_webhook_secret` Vault entry
+//
+// tool/push-setup.sh sets all of these. Either platform can be missing; its
+// phones are skipped until its key is there.
 
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { importPKCS8, SignJWT } from "npm:jose@5";
@@ -48,6 +53,31 @@ async function apnsToken(): Promise<string> {
     .sign(key);
   cached = { jwt, at: Date.now() };
   return jwt;
+}
+
+// Firebase takes an OAuth token, which the service account signs for itself.
+// It lasts an hour; a warm instance reuses it for 50 minutes.
+let fcmCached: { token: string; project: string; at: number } | null = null;
+
+async function fcmAuth(): Promise<{ token: string; project: string }> {
+  if (fcmCached && Date.now() - fcmCached.at < 50 * 60 * 1000) return fcmCached;
+  const account = JSON.parse(Deno.env.get("FCM_SERVICE_ACCOUNT")!);
+  const key = await importPKCS8(account.private_key, "RS256");
+  const assertion = await new SignJWT({ scope: "https://www.googleapis.com/auth/firebase.messaging" })
+    .setProtectedHeader({ alg: "RS256", typ: "JWT" })
+    .setIssuer(account.client_email)
+    .setAudience("https://oauth2.googleapis.com/token")
+    .setIssuedAt()
+    .setExpirationTime("1h")
+    .sign(key);
+  const res = await fetch("https://oauth2.googleapis.com/token", {
+    method: "POST",
+    headers: { "content-type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({ grant_type: "urn:ietf:params:oauth:grant-type:jwt-bearer", assertion }),
+  });
+  if (!res.ok) throw new Error(`fcm oauth ${res.status} ${await res.text()}`);
+  fcmCached = { token: (await res.json()).access_token, project: account.project_id, at: Date.now() };
+  return fcmCached;
 }
 
 function clip(text: string, max: number): string {
@@ -93,53 +123,101 @@ async function sendNotice(notice_id: string): Promise<{ sent: number; removed: n
     : actorName || "Mull";
   const text = [notice.title, notice.body].filter((s: string) => s && s.trim()).join(" · ");
 
-  const payload = JSON.stringify({
-    aps: {
-      alert: { title: clip(heading, 60), body: clip(text, 180) },
-      badge: unread ?? undefined,
-      sound: "default",
-      // Stacks one group's notifications together in Notification Centre.
-      "thread-id": notice.group_id ?? notice.actor_id ?? "mull",
-    },
-    notice_id: notice.id,
-    group_id: notice.group_id,
-    kind: notice.kind,
-  });
+  const title = clip(heading, 60);
+  const body = clip(text, 180);
+  // What a tap hands back to the app, the same keys on both platforms.
+  const data: Record<string, string> = { notice_id: notice.id, kind: notice.kind };
+  if (notice.group_id) data.group_id = notice.group_id;
 
-  const jwt = await apnsToken();
-  const topic = Deno.env.get("APNS_TOPIC") ?? "in.mull.app";
+  const apple = tokens.filter((t) => t.environment !== "fcm");
+  const android = tokens.filter((t) => t.environment === "fcm");
   const dead: string[] = [];
   let sent = 0;
 
-  await Promise.all(tokens.map(async ({ token, environment }) => {
-    const host = HOSTS[environment as keyof typeof HOSTS] ?? HOSTS.production;
-    const res = await fetch(`${host}/3/device/${token}`, {
-      method: "POST",
-      headers: {
-        authorization: `bearer ${jwt}`,
-        "apns-topic": topic,
-        "apns-push-type": "alert",
-        "apns-priority": "10",
-        // A day. A notice older than that is in the inbox, and a buzz for it
-        // would only be confusing.
-        "apns-expiration": String(Math.floor(Date.now() / 1000) + 86400),
+  if (apple.length && Deno.env.get("APNS_PRIVATE_KEY")) {
+    const payload = JSON.stringify({
+      aps: {
+        alert: { title, body },
+        badge: unread ?? undefined,
+        sound: "default",
+        // Stacks one group's notifications together in Notification Centre.
+        "thread-id": notice.group_id ?? notice.actor_id ?? "mull",
       },
-      body: payload,
+      ...data,
     });
-    if (res.ok) {
-      sent++;
-      return;
-    }
-    const reason = (await res.json().catch(() => ({}))).reason ?? res.status;
-    // Gone for good: uninstalled, or a token for the other environment. The
-    // app registers again on its next launch if it is still there.
-    if (res.status === 410 || reason === "BadDeviceToken" || reason === "Unregistered" ||
-        reason === "DeviceTokenNotForTopic") {
-      dead.push(token);
-    } else {
-      console.error(`apns ${res.status} ${reason}`);
-    }
-  }));
+    const jwt = await apnsToken();
+    const topic = Deno.env.get("APNS_TOPIC") ?? "in.mull.app";
+
+    await Promise.all(apple.map(async ({ token, environment }) => {
+      const host = HOSTS[environment as keyof typeof HOSTS] ?? HOSTS.production;
+      const res = await fetch(`${host}/3/device/${token}`, {
+        method: "POST",
+        headers: {
+          authorization: `bearer ${jwt}`,
+          "apns-topic": topic,
+          "apns-push-type": "alert",
+          "apns-priority": "10",
+          // A day. A notice older than that is in the inbox, and a buzz for it
+          // would only be confusing.
+          "apns-expiration": String(Math.floor(Date.now() / 1000) + 86400),
+        },
+        body: payload,
+      });
+      if (res.ok) {
+        sent++;
+        return;
+      }
+      const reason = (await res.json().catch(() => ({}))).reason ?? res.status;
+      // Gone for good: uninstalled, or a token for the other environment. The
+      // app registers again on its next launch if it is still there.
+      if (res.status === 410 || reason === "BadDeviceToken" || reason === "Unregistered" ||
+          reason === "DeviceTokenNotForTopic") {
+        dead.push(token);
+      } else {
+        console.error(`apns ${res.status} ${reason}`);
+      }
+    }));
+  }
+
+  if (android.length && Deno.env.get("FCM_SERVICE_ACCOUNT")) {
+    const auth = await fcmAuth();
+    await Promise.all(android.map(async ({ token }) => {
+      const res = await fetch(`https://fcm.googleapis.com/v1/projects/${auth.project}/messages:send`, {
+        method: "POST",
+        headers: { authorization: `Bearer ${auth.token}`, "content-type": "application/json" },
+        body: JSON.stringify({
+          message: {
+            token,
+            notification: { title, body },
+            data,
+            android: {
+              priority: "high",
+              // A day, as for APNs.
+              ttl: "86400s",
+              notification: {
+                // The channel MainActivity makes, so Settings can turn it off.
+                channel_id: "notices",
+                notification_count: unread ?? undefined,
+              },
+            },
+          },
+        }),
+      });
+      if (res.ok) {
+        sent++;
+        return;
+      }
+      const error = (await res.json().catch(() => ({}))).error ?? {};
+      const code = (error.details ?? []).find((d: { errorCode?: string }) => d.errorCode)?.errorCode;
+      // Uninstalled, or the app's data was cleared. A fresh token comes with
+      // the next launch.
+      if (res.status === 404 || code === "UNREGISTERED") {
+        dead.push(token);
+      } else {
+        console.error(`fcm ${res.status} ${code ?? error.status ?? ""} ${error.message ?? ""}`);
+      }
+    }));
+  }
 
   if (dead.length) await db.from("push_tokens").delete().in("token", dead);
   return { sent, removed: dead.length };
@@ -149,9 +227,9 @@ Deno.serve(async (req) => {
   if (!sameSecret(req.headers.get("x-mull-push-secret"), Deno.env.get("PUSH_WEBHOOK_SECRET"))) {
     return new Response("forbidden", { status: 403 });
   }
-  if (!Deno.env.get("APNS_PRIVATE_KEY")) {
-    // Deployed before the key exists. Nothing to do, and not an error.
-    return Response.json({ skipped: "no APNs key configured" });
+  if (!Deno.env.get("APNS_PRIVATE_KEY") && !Deno.env.get("FCM_SERVICE_ACCOUNT")) {
+    // Deployed before either key exists. Nothing to do, and not an error.
+    return Response.json({ skipped: "no APNs or FCM key configured" });
   }
 
   // `notice_ids` is every notice one insert wrote — one call for a whole

@@ -2,7 +2,8 @@
 ///
 /// A notice already arrives while Mull is open, over [LiveChannel]. This is
 /// the other half: the device token, handed to the server so the `push` edge
-/// function can send each notice through APNs as well.
+/// function can send each notice through APNs (iPhone) or Firebase Cloud
+/// Messaging (Android) as well.
 ///
 /// What a push says is decided on the server, from the notice row, so every
 /// device and every build words it the same. What happens on a tap is decided
@@ -70,8 +71,9 @@ class PushService {
       case 'authorized' || 'provisional' || 'ephemeral':
         await _invoke<void>('register');
       default:
-        // Denied. Settings is where that is changed, and asking again from
-        // here does nothing on iOS.
+        // Denied, or 'unavailable' on an Android build without Firebase.
+        // Settings is where a denial is changed, and asking again from here
+        // does nothing on iOS.
         break;
     }
   }
@@ -111,7 +113,7 @@ class PushService {
     if (payload != null) opened.value++;
   }
 
-  /// Null when there is no native side: tests, and anything not iOS.
+  /// Null when there is no native side: tests, and desktop.
   static Future<T?> _invoke<T>(String method, [Object? arguments]) async {
     try {
       return await _channel.invokeMethod<T>(method, arguments);
