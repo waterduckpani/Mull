@@ -82,6 +82,7 @@ account) and by email.
 | Photos and videos → Photos (bill photos) | Yes | Optional | App functionality |
 | App activity → Other user-generated content (groups, expenses, notes) | Yes | Required | App functionality |
 | App info and performance → Crash logs | Yes | Required | Analytics (not linked to the account) |
+| Device or other IDs (the push token, through Firebase Cloud Messaging) | Yes | Optional (only if notifications are allowed) | App functionality |
 
 Everything else: not collected. No data is processed ephemerally only; no data
 is used for ads or tracking.
