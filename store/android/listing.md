@@ -53,8 +53,12 @@ Production → Countries/regions → **India only**, same as iOS.
   interact / exchange content: Yes** (expense names and notes are seen by the
   group), **shares location: No**, **digital purchases: No**. Expect
   *Everyone* / *3+*. Report and block exist (Friends → ··· → Report / Block).
-- **Target audience:** 18 and over only. (Choosing under-18 groups pulls in
-  the Families policy, and Mull is about money between adults.)
+- **Target audience:** 16–17 and 18 and over. Not 18+ alone: Play warns that
+  an 18+-only app may be held back from accounts it believes are under 18,
+  and the terms already let under-18s use Mull with a parent's or guardian's
+  permission. Nothing below 16 (13–15 adds teen rules; under 13 pulls in the
+  Families policy). "Could it appeal to children?": No. Ads: No.
+  IARC came out 12+ / Teen (users interact), which bars picking under 13 anyway.
 - **News app:** No.
 - **Government app:** No.
 - **Financial features:** Mull doesn't move money. Pick *"My app doesn't
