@@ -75,20 +75,24 @@ const SLIDES = [
 const q = new URLSearchParams(location.search);
 const W = +q.get('w') || 1284, H = +q.get('h') || 2778;
 const s = SLIDES[(+q.get('s') || 1) - 1];
-const k = W / 1284; // everything is laid out at 1284 wide and scaled
+// Everything is laid out at 1284 wide and scaled. Play wants 9:16, where
+// the 2:1 layout would push the phone over the copy, so its slides keep the
+// 2:1 layout and grow sideways instead: the extra width is just field.
+const LW = q.has('android') ? 2568 * W / H : 1284;
+const k = W / LW, LH = H / k, dx = (LW - 1284) / 2;
 
 document.documentElement.style.cssText =
-  `--w:1284px;--h:${H / k}px;--bg:${s.bg};--disc:${s.disc};--hi:${s.hi};zoom:${k}`;
+  `--w:${LW}px;--h:${LH}px;--bg:${s.bg};--disc:${s.disc};--hi:${s.hi};zoom:${k}`;
 
 const S = '../screenshots/';
 document.body.insertAdjacentHTML('beforeend', `
-  <div class="disc" style="width:1500px;height:1500px;left:-110px;top:${1250 + (H / k - 2778) / 2}px"></div>
-  <div class="copy">
+  <div class="disc" style="width:1500px;height:1500px;left:${dx - 110}px;top:${1250 + (LH - 2778) / 2}px"></div>
+  <div class="copy" style="left:${96 + dx}px;right:${96 + dx}px">
     <div class="eyebrow">${s.eyebrow}</div>
     <h1>${s.h}</h1>
     <div class="sub">${s.sub}</div>
   </div>
-  <div class="phone" style="top:${960 + (H / k - 2778) * 0.6}px">
+  <div class="phone" style="top:${960 + (LH - 2778) * 0.6}px">
     <div class="screen">
       <img src="${S}${s.shot}.png">
       <div class="island"></div>
@@ -103,8 +107,8 @@ document.body.insertAdjacentHTML('beforeend', `
 
 const p = s.pop, [cx, cy, cw, ch] = p.crop, f = p.w / cw;
 // Centre the lifted piece on the spot it came from, so it covers its source.
-const phoneTop = 960 + (H / k - 2778) * 0.6, screen = 916 / 1206;
-const mx = (1284 - 960) / 2 + 22 + (cx + cw / 2) * screen;
+const phoneTop = 960 + (LH - 2778) * 0.6, screen = 916 / 1206;
+const mx = dx + (1284 - 960) / 2 + 22 + (cx + cw / 2) * screen;
 const my = phoneTop + 22 + (cy + ch / 2) * screen;
 const el = document.createElement('div');
 el.className = 'pop';

@@ -19,8 +19,8 @@ render() { # out-dir width height [extra query]
 }
 render store/screenshots-6.5 1284 2778
 render store/screenshots 1320 2868
-# Play refuses a long side more than twice the short one, so exactly 2:1.
-render store/android/screenshots 1284 2568 '&android'
+# Play takes only 16:9 or 9:16, at least 1080 a side to be featured.
+render store/android/screenshots 1440 2560 '&android'
 "$CHROME" --headless=new --disable-gpu --hide-scrollbars --force-device-scale-factor=1 \
   --allow-file-access-from-files --virtual-time-budget=3000 \
   --window-size=1024,500 --screenshot="$PWD/store/android/feature-graphic.png" "file://$PWD/tool/play_feature.html" 2>/dev/null

@@ -7,7 +7,7 @@ Files in this folder:
 
 - `play-icon-512.png`: App icon (512×512)
 - `feature-graphic.png`: Feature graphic (1024×500), from `tool/play_feature.html`
-- `screenshots/01–06.png`: Phone screenshots (1284×2568). Play refuses a long side more than 2× the short one, so the iOS set can't be reused. All three are rendered by `tool/store_shots.sh`.
+- `screenshots/01–06.png`: Phone screenshots (1440×2560). Play takes only 16:9 or 9:16, so the iOS set can't be reused; these are the iOS layout widened with extra field. All three are rendered by `tool/store_shots.sh`.
 
 ## Create app
 
