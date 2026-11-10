@@ -31,16 +31,20 @@ class GroupScreen extends StatefulWidget {
 class _GroupScreenState extends State<GroupScreen> {
   late GroupTab _tab = widget.initialTab;
 
+  late final double _raiseBefore;
+
   @override
   void initState() {
     super.initState();
     // Notices sit above the bar while it is on screen, not on top of the +.
+    // What was there before comes back after: the home screen has a bar too.
+    _raiseBefore = Toast.raise;
     Toast.raise = GroupBar.height + 12;
   }
 
   @override
   void dispose() {
-    Toast.raise = 0;
+    Toast.raise = _raiseBefore;
     super.dispose();
   }
 
