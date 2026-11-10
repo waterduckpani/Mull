@@ -16,6 +16,8 @@ enum MullGlyph {
   arrowUpRight,
   overview,
   ledger,
+  home,
+  grid,
 }
 
 /// The design's hand-drawn 24×24 stroke icons, painted directly (no SVG dependency).
@@ -183,6 +185,22 @@ class _GlyphPainter extends CustomPainter {
         canvas.drawLine(const Offset(6, 7), const Offset(18, 7), stroke);
         canvas.drawLine(const Offset(6, 12), const Offset(18, 12), stroke);
         canvas.drawLine(const Offset(6, 17), const Offset(13.5, 17), stroke);
+      case MullGlyph.home:
+        canvas.drawPath(
+          Path()
+            ..moveTo(5, 11)
+            ..lineTo(12, 5)
+            ..lineTo(19, 11)
+            ..lineTo(19, 19)
+            ..lineTo(5, 19)
+            ..close(),
+          stroke,
+        );
+      case MullGlyph.grid:
+        // Four tiles: a set of groups.
+        for (final o in const [Offset(4.5, 4.5), Offset(13, 4.5), Offset(4.5, 13), Offset(13, 13)]) {
+          canvas.drawRRect(RRect.fromRectAndRadius(o & const Size(6.5, 6.5), const Radius.circular(2)), stroke);
+        }
       case MullGlyph.arrowUpRight:
         canvas.drawLine(const Offset(7, 17), const Offset(17, 7), stroke);
         canvas.drawPath(
