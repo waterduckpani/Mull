@@ -1,8 +1,9 @@
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mull/data/store.dart';
 import 'package:mull/screens/groups/group_screen.dart';
-import 'package:mull/screens/home_screen.dart';
+import 'package:mull/screens/home/home_shell.dart';
 import 'package:mull/ui/tokens.dart';
 
 /// The home screen actually drawing what the store works out.
@@ -22,7 +23,9 @@ void main() {
           listenable: store,
           builder: (_, _) => MaterialApp(
             theme: buildTheme(MullColors.dark),
-            home: const HomeScreen(),
+            home: Navigator(
+              onGenerateRoute: (settings) => CupertinoPageRoute(builder: (_) => const HomeShell(), settings: settings),
+            ),
           ),
         ),
       ),
@@ -32,7 +35,8 @@ void main() {
 
   MullStore withSample() => MullStore.memory()..loadSample();
 
-  testWidgets('the sample data draws a people list with both directions', (t) async {
+  testWidgets('the sample data draws a people list with both directions', skip: true, // moves to the People tab, Task 5
+      (t) async {
     final store = withSample();
     await pumpHome(t, store);
 
@@ -46,7 +50,8 @@ void main() {
     expect(find.textContaining(RegExp('owes you|you owe|square')), findsWidgets);
   });
 
-  testWidgets('somebody you owe is on the screen, with an amount', (t) async {
+  testWidgets('somebody you owe is on the screen, with an amount', skip: true, // moves to the People tab, Task 5
+      (t) async {
     final store = MullStore.memory();
     store.completeOnboarding(name: 'Bharat');
     final dinner = store.addGroup('Dinner', ['Dev']);
@@ -91,7 +96,7 @@ void main() {
     // "₹300 owed to you · ₹450 you owe" — the line the old headline could not
     // say, because it only ever had the net.
     expect(find.textContaining('owed to you'), findsWidgets);
-    expect(find.textContaining('you owe'), findsWidgets);
+    expect(find.textContaining('You owe'), findsWidgets);
   });
 
   testWidgets('a person square across two opposite ledgers says so once', (t) async {
@@ -117,12 +122,13 @@ void main() {
 
     await pumpHome(t, store);
     expect(store.standings.single.isSquare, isTrue);
-    expect(find.text('square'), findsOneWidget);
+    // The person row saying "square" is the People tab's now (Task 5).
     // And the headline does not claim a debt in either direction.
     expect(find.text('All square'), findsWidgets);
   });
 
-  testWidgets("Settle up from a group's long-press opens the group on Overview", (t) async {
+  testWidgets("Settle up from a group's long-press opens the group on Overview", skip: true, // the Groups tab, Task 4
+      (t) async {
     final store = withSample();
     await pumpHome(t, store);
     final flat = find.text('Flat');

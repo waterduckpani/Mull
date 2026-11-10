@@ -14,7 +14,7 @@ import '../ui/sheet.dart';
 import '../ui/tokens.dart';
 import '../ui/widgets.dart';
 import 'friends_sheet.dart';
-import 'home_screen.dart' show showHowItWorks;
+import 'home/home_tab.dart' show showHowItWorks;
 import 'upi_picker.dart';
 
 Future<void> showProfileSheet(BuildContext context) =>

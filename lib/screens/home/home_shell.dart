@@ -1,3 +1,4 @@
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
@@ -6,6 +7,9 @@ import '../../ui/page.dart';
 import '../../ui/sheet.dart';
 import '../../ui/tab_bar.dart';
 import '../../ui/tokens.dart';
+import '../groups/create_group_flow.dart';
+import '../groups/group_screen.dart';
+import 'home_tab.dart';
 
 /// The four places at the top of the app, in the order the bar shows them.
 enum HomeTab {
@@ -68,10 +72,19 @@ class _HomeShellState extends State<HomeShell> {
 
   void _select(HomeTab tab) => setState(() => _tab = tab);
 
-  Widget _page(HomeTab tab) => MullPage(
+  Future<void> _start({String? name}) async {
+    final group = await showCreateGroup(context, name: name);
+    if (group != null && mounted) {
+      await Navigator.of(context).push(CupertinoPageRoute(builder: (_) => GroupScreen(groupId: group.id)));
+    }
+  }
+
+  Widget _page(HomeTab tab) => SizedBox.expand(
     key: ValueKey('home-tab-${tab.name}'),
-    bottomInset: MullTabBar.height,
-    children: [PageTitle(tab.label)],
+    child: switch (tab) {
+      HomeTab.home => HomeTabPage(bottomInset: MullTabBar.height, onStart: _start),
+      _ => MullPage(bottomInset: MullTabBar.height, children: [PageTitle(tab.label)]),
+    },
   );
 
   @override

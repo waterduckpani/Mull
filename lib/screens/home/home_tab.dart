@@ -1,42 +1,46 @@
 import 'package:flutter/cupertino.dart';
 
-import '../core/dates.dart';
-import '../core/money.dart';
-import '../data/models.dart';
-import '../data/remote/friends_service.dart';
-import '../data/remote/live_channel.dart';
-import '../data/store.dart';
-import '../ui/group_icons.dart';
-import '../ui/icons.dart';
-import '../ui/page.dart';
-import '../ui/sheet.dart';
-import '../ui/tokens.dart';
-import '../ui/widgets.dart';
-import 'groups/create_group_flow.dart';
-import 'groups/expense_sheet.dart';
-import 'groups/group_screen.dart';
-import 'groups/group_sheets.dart';
-import 'groups/icon_picker.dart';
-import 'groups/recurring_sheets.dart';
-import 'friends_sheet.dart';
-import 'people_sheet.dart';
+import '../../core/dates.dart';
+import '../../core/money.dart';
+import '../../data/models.dart';
+import '../../data/remote/friends_service.dart';
+import '../../data/remote/live_channel.dart';
+import '../../data/store.dart';
+import '../../ui/icons.dart';
+import '../../ui/page.dart';
+import '../../ui/sheet.dart';
+import '../../ui/tokens.dart';
+import '../../ui/widgets.dart';
+import '../groups/expense_sheet.dart';
+import '../groups/group_screen.dart';
+import '../groups/group_sheets.dart';
+import '../groups/icon_picker.dart';
+import '../groups/recurring_sheets.dart';
+import '../friends_sheet.dart';
+import 'home_shell.dart';
+import 'needs_you.dart';
 
-/// Mull, all of it.
+/// The Home tab: where you stand, what needs you, and what just happened.
 ///
-/// One number at the top, then the things that need an answer, then the
-/// ledgers. There is no tab bar because there is nothing to switch to: the
-/// whole app is "who owes whom, and what do I do about it".
-class HomeScreen extends StatelessWidget {
-  const HomeScreen({super.key});
+/// It used to be everything at once — every card waiting on you, then every
+/// group as a big card, then everyone you split with — so with a few things
+/// pending the groups fell off the screen. Groups and people have tabs of
+/// their own now. This one keeps the number, folds what is waiting into one
+/// stack, and shows the last few things that happened anywhere.
+class HomeTabPage extends StatelessWidget {
+  const HomeTabPage({super.key, this.bottomInset = 0, required this.onStart});
+
+  /// Room under the content for the bar.
+  final double bottomInset;
+
+  /// Starts a group, from the empty screen's chips.
+  final Future<void> Function({String? name}) onStart;
 
   @override
   Widget build(BuildContext context) {
     final store = context.store;
-    final groups = store.namedGroups;
-    // Everyone you split with, netted across every ledger — not the one-to-one
-    // ledgers, which are only one of the places a person turns up. Somebody
-    // you owe on a trip and who owes you on the flat is one row here, in one
-    // direction, which is the question this screen exists to answer.
+    // Everyone you split with, netted across every ledger: the number at the
+    // top is theirs added up.
     final people = store.standings;
     final claims = store.confirmationsForYou;
     final waiting = store.claimsAwaitingOthers;
@@ -49,27 +53,7 @@ class HomeScreen extends StatelessWidget {
       CupertinoPageRoute(builder: (_) => GroupScreen(groupId: g.id)),
     );
 
-    Future<void> start({String? name}) async {
-      final group = await showCreateGroup(context, name: name);
-      if (group != null && context.mounted) open(group);
-    }
-
-    // How much room a ledger row gets.
-    //
-    // One group should not look like a list of one. A person with a single
-    // flat opens Mull to a screen that is mostly empty, and a 68px row sitting
-    // under a 76pt number reads as an app waiting for something to happen —
-    // so with one or two ledgers the row becomes a card with the icon, the
-    // people and the balance in it. The moment there are several, the page has
-    // a real job to do and the rows tighten up to let you scan them.
-    final density = switch (groups.length) {
-      1 => _Density.roomy,
-      2 || 3 => _Density.medium,
-      _ => _Density.compact,
-    };
-
-    // Exactly one focal object per screen. The first thing waiting on an
-    // answer takes it; everything below is an ordinary card.
+    // Exactly one focal object per screen: the card on top of the stack.
     var focalTaken = false;
     Lift claim() {
       if (focalTaken) return Lift.card;
@@ -77,123 +61,167 @@ class HomeScreen extends StatelessWidget {
       return Lift.focal;
     }
 
+    final cards = <Widget>[
+      for (final news in netted) _NettedCard(key: ValueKey('netted-${news.ids.first}'), news: news),
+      for (final (group, settlement) in claims)
+        _ClaimCard(key: ValueKey(settlement.id), group: group, settlement: settlement, lift: claim()),
+      for (final (group, settlement) in waiting)
+        _WaitingClaimCard(
+          key: ValueKey('waiting-${settlement.id}'),
+          group: group,
+          settlement: settlement,
+          lift: claim(),
+        ),
+      for (final (group, expense) in billsAsked)
+        _BillAskedCard(key: ValueKey('bill-${expense.id}'), group: group, expense: expense, lift: claim()),
+      for (final (group, schedule) in due)
+        _DueCard(key: ValueKey(schedule.id), group: group, schedule: schedule, lift: claim()),
+    ];
+
+    // The last few things that happened anywhere, newest first.
+    final recent = [
+      for (final g in store.groups)
+        for (final item in <Object>[...g.expenses, ...g.settlements]) (g, item),
+    ]..sort((a, b) => newestFirst(ledgerMoment(a.$2), ledgerMoment(b.$2)));
+
+    final requests = _FriendRequestsCard(
+      onOpenLedger: (id) {
+        final g = store.groupById(id);
+        if (g != null) open(g);
+      },
+    );
+
     return MullPage(
       // Its own scroll position either side of empty: the last group going
       // left the empty screen opened part-way down, under the header.
       key: ValueKey(empty),
+      bottomInset: bottomInset,
       glow: const GlowSpec(size: 450, top: -170, right: -150),
       onRefresh: store.pullNow,
-      // Adding an expense is the thing people do most, so once there is a
-      // ledger to add it to it gets the primary button, and starting a group
-      // steps aside next to it.
-      bottom: empty
-          ? PillButton(
-              'Start a group',
-              glyph: MullGlyph.plus,
-              onTap: () => start(),
-            )
-          : Row(
-              children: [
-                Expanded(
-                  child: SecondaryButton('New group', onTap: () => start()),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: PillButton('Add expense', onTap: () => showQuickAdd(context)),
-                ),
-              ],
-            ),
       children: empty
           ? [
               // A new user's first screen is this one, and the request is how
-              // the groups they were invited to reach them.
-              _FriendRequestsCard(
-                onOpenLedger: (id) {
-                  final g = store.groupById(id);
-                  if (g != null) open(g);
-                },
-              ),
-              _EmptyHome(onStart: start),
+              // they get into the group they were added to.
+              requests,
+              _EmptyHome(onStart: onStart),
             ]
           : [
               _Headline(people: people),
-              _FriendRequestsCard(
-                onOpenLedger: (id) {
-                  final g = store.groupById(id);
-                  if (g != null) open(g);
-                },
-              ),
-
-              // What Mull cancelled on its own, said first: it is why the
-              // number above may be smaller than the groups led you to expect.
-              for (final news in netted)
-                _NettedCard(key: ValueKey('netted-${news.ids.first}'), news: news),
-
-              // Anything waiting on an answer sits directly under the number,
-              // because the number is not finished until these are dealt with.
-              for (final (group, settlement) in claims)
-                _ClaimCard(
-                  key: ValueKey(settlement.id),
-                  group: group,
-                  settlement: settlement,
-                  lift: claim(),
+              requests,
+              if (cards.isNotEmpty) ...[
+                Eyebrow(
+                  'Needs you · ${cards.length}',
+                  size: 10.5,
+                  tracking: .18,
+                  padding: const EdgeInsets.fromLTRB(Gutter.text, 34, Gutter.text, 14),
                 ),
-              for (final (group, settlement) in waiting)
-                _WaitingClaimCard(
-                  key: ValueKey('waiting-${settlement.id}'),
-                  group: group,
-                  settlement: settlement,
-                  lift: claim(),
-                ),
-              for (final (group, expense) in billsAsked)
-                _BillAskedCard(
-                  key: ValueKey('bill-${expense.id}'),
-                  group: group,
-                  expense: expense,
-                  lift: claim(),
-                ),
-              for (final (group, schedule) in due)
-                _DueCard(
-                  key: ValueKey(schedule.id),
-                  group: group,
-                  schedule: schedule,
-                  lift: claim(),
-                ),
-
-              if (groups.isNotEmpty) ...[
-                const Eyebrow('Groups', padding: EdgeInsets.fromLTRB(Gutter.text, 40, Gutter.text, 0)),
-                const SizedBox(height: 14),
-                Stacked(
-                  gap: density == _Density.roomy ? 10 : 8,
-                  padding: const EdgeInsets.symmetric(horizontal: Gutter.card),
-                  children: [
-                    for (final g in groups)
-                      _LedgerRow(
-                        key: ValueKey(g.id),
-                        group: g,
-                        density: density,
-                        onTap: () => open(g),
-                      ),
-                  ],
-                ),
+                NeedsYouStack(cards: cards),
               ],
-              if (people.isNotEmpty) ...[
-                const Eyebrow('People', padding: EdgeInsets.fromLTRB(Gutter.text, 36, Gutter.text, 0)),
-                const SizedBox(height: 14),
+              if (recent.isNotEmpty) ...[
+                const Eyebrow(
+                  'Recent',
+                  size: 10.5,
+                  tracking: .18,
+                  padding: EdgeInsets.fromLTRB(Gutter.text, 36, Gutter.text, 14),
+                ),
                 Surface(
                   lift: Lift.card,
                   radius: 26,
                   margin: const EdgeInsets.symmetric(horizontal: Gutter.card),
-                  padding: const EdgeInsets.fromLTRB(22, 4, 18, 4),
+                  padding: const EdgeInsets.fromLTRB(18, 4, 18, 4),
                   child: CardRows(
                     children: [
-                      for (final standing in people) PersonRow(key: ValueKey(standing.member.id), standing: standing),
+                      for (final (group, item) in recent.take(5))
+                        _RecentRow(
+                          key: ValueKey('recent-${switch (item) { Expense e => e.id, Settlement s => s.id, _ => '' }}'),
+                          group: group,
+                          item: item,
+                          onOpen: () => open(group),
+                        ),
                     ],
                   ),
                 ),
               ],
-              _Footer(people: people),
+              const SizedBox(height: 12),
             ],
+    );
+  }
+}
+
+/// One thing that happened, in whichever group it happened in.
+class _RecentRow extends StatelessWidget {
+  const _RecentRow({super.key, required this.group, required this.item, required this.onOpen});
+
+  final Group group;
+  final Object item;
+  final VoidCallback onOpen;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.c;
+    final store = context.store;
+    String name(String id) => switch (group.memberById(id)) {
+      final m? => store.shortName(m),
+      null => 'Someone',
+    };
+
+    final (String title, String detail, int amount, String? under, VoidCallback onTap) = switch (item) {
+      Expense e => (
+        e.description,
+        '${group.title} · ${e.payerId == group.you?.id ? 'you paid' : '${name(e.payerId)} paid'}',
+        e.amount,
+        switch (e.shares[group.you?.id] ?? 0) {
+          0 => 'not yours',
+          final share => 'your share ${inr(share)}',
+        },
+        () => showExpenseDetail(context, group, e),
+      ),
+      Settlement s => (
+        s.offset ? '${name(s.fromId)} and ${name(s.toId)} netted off' : '${name(s.fromId)} paid ${name(s.toId)}',
+        group.title,
+        s.amount,
+        null,
+        onOpen,
+      ),
+      _ => ('', '', 0, null, onOpen),
+    };
+
+    return Pressable(
+      onTap: onTap,
+      scale: .99,
+      semanticLabel: [title, detail, inr(amount), ?under].join(', '),
+      child: ExcludeSemantics(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 13),
+          child: Row(
+            children: [
+              GroupBadge(group: group, size: 36, glyphSize: 17, quiet: true),
+              const SizedBox(width: 13),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(title, style: ranade(15.5, color: c.ink), maxLines: 1, overflow: TextOverflow.ellipsis),
+                    const SizedBox(height: 2),
+                    Text(detail, style: MullType.caption(c.ink3, size: 11.5), maxLines: 1, overflow: TextOverflow.ellipsis),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 10),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Text(inr(amount), style: MullType.listAmount(c.ink)),
+                  if (under != null) ...[
+                    const SizedBox(height: 3),
+                    Text(under, style: MullType.caption(c.ink3, size: 11)),
+                  ],
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }
@@ -239,7 +267,7 @@ class _Headline extends StatelessWidget {
         ),
         if (bothWays)
           Pressable(
-            onTap: () => _openWhoOwesWho(context),
+            onTap: () => HomeShellScope.of(context).select(HomeTab.people),
             scale: .99,
             semanticLabel: 'Owed to you ${inr(owed)}, you owe ${inr(owing)}. Open who owes who.',
             child: ExcludeSemantics(
@@ -279,56 +307,6 @@ class _Headline extends StatelessWidget {
 
 /// Opens the both-directions list, and follows it into a ledger if one was
 /// tapped down there.
-Future<void> _openWhoOwesWho(BuildContext context) async {
-  final navigator = Navigator.of(context);
-  final store = context.readStore;
-  final groupId = await showWhoOwesWhat(context);
-  if (groupId == null) return;
-  final group = store.groupById(groupId);
-  if (group == null) return;
-  await navigator.push(
-    CupertinoPageRoute(builder: (_) => GroupScreen(groupId: group.id)),
-  );
-}
-
-/// The line at the end of the list.
-class _Footer extends StatelessWidget {
-  const _Footer({required this.people});
-
-  /// [MullStore.standings], worked out once by the home screen.
-  final List<Standing> people;
-
-  @override
-  Widget build(BuildContext context) {
-    final c = context.c;
-    final unsquare = people.where((s) => !s.isSquare).length;
-    if (unsquare == 0) return const SizedBox(height: 12);
-
-    return Pressable(
-      onTap: () => _openWhoOwesWho(context),
-      semanticLabel: 'Who owes who, across $unsquare people',
-      child: ExcludeSemantics(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(Gutter.text, 30, Gutter.text, 4),
-          child: Row(
-            children: [
-              Expanded(
-                child: Text(
-                  unsquare == 1 ? 'One person to square up with' : '$unsquare people to square up with',
-                  style: MullType.caption(c.ink3, size: 12.5),
-                ),
-              ),
-              Text('Who owes who', style: ranade(12.5, color: c.ink2)),
-              const SizedBox(width: 6),
-              MullIcon(MullGlyph.chevronRight, size: 13, color: c.ink3, strokeWidth: 1.8),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
 /// Mull netted off debts with someone across ledgers. Said once, until read.
 ///
 /// Netting happens without asking, because it changes nobody's money: you
@@ -962,227 +940,3 @@ class _DueCard extends StatelessWidget {
   }
 }
 
-/// How much of the screen a ledger row is allowed to take.
-enum _Density {
-  /// One ledger. The number goes big and the card carries the detail.
-  roomy,
-
-  /// Two or three. The icon and the people stay, the number comes back down.
-  medium,
-
-  /// Four or more. A line you scan, which is all a list this long can be.
-  compact,
-}
-
-/// One entry in the GROUPS or PEOPLE list.
-class _LedgerRow extends StatelessWidget {
-  const _LedgerRow({
-    super.key,
-    required this.group,
-    required this.onTap,
-    this.density = _Density.compact,
-  });
-
-  final Group group;
-  final VoidCallback onTap;
-  final _Density density;
-
-  @override
-  Widget build(BuildContext context) {
-    final c = context.c;
-    final store = context.store;
-    // Both directions, never netted: what you owe one person and what another
-    // owes you are two debts, and the row used to call them "settled up".
-    final owing = group.youOweHere;
-    final owed = group.owedToYouHere;
-    final settled = owing == 0 && owed == 0;
-
-    final (label, amount) = switch (null) {
-      _ when owing > 0 && owed > 0 => ('get back ${inr(owed)} · you owe', owing),
-      _ when owing > 0 => ('you owe', owing),
-      _ when owed > 0 => ('you get back', owed),
-      _ => ('settled up', null),
-    };
-
-    // A settled ledger is still worth seeing and not worth reading. It sinks
-    // rather than disappearing, so the list stays a record of who you split
-    // with instead of emptying out every time everyone pays up.
-    final lift = settled ? Lift.flat : Lift.card;
-
-    // One label for the whole row. Read out piece by piece it becomes "Goa
-    // trip, you owe, two thousand four hundred" spread over four stops.
-    Widget wrap(Widget child, {required double radius, required EdgeInsets padding}) => Semantics(
-      button: true,
-      label: amount == null ? '${group.title}, settled up' : '${group.title}, $label ${inr(amount)}',
-      child: ExcludeSemantics(
-        child: Pressable(
-          onTap: onTap,
-          onLongPress: () => showLedgerActions(context, group),
-          scale: .985,
-          // A settled ledger recedes by sitting flatter and saying "settled
-          // up", not by being faded out. Wrapping the row in Opacity took
-          // every caption on it to 2.6:1 against the screen, well under the
-          // 4.5:1 this design went to some trouble to clear everywhere else —
-          // and the rule here has always been that hierarchy is how high a
-          // surface floats.
-          child: Container(
-            padding: padding,
-            decoration: surfaceOf(c, lift, radius: BorderRadius.circular(radius)),
-            child: child,
-          ),
-        ),
-      ),
-    );
-
-    if (density == _Density.compact) {
-      return wrap(
-        radius: 26,
-        padding: const EdgeInsets.fromLTRB(24, 21, 24, 21),
-        Row(
-          children: [
-            if (group.isDirect) ...[
-              MullIcon(MullGlyph.person, size: 15, color: c.ink3, strokeWidth: 1.6),
-              const SizedBox(width: 10),
-            ] else if (group.icon != null) ...[
-              Icon(groupGlyph(group.icon), size: 16, color: c.ink3),
-              const SizedBox(width: 10),
-            ],
-            Expanded(
-              child: Text(
-                group.title,
-                style: MullType.cardTitle(settled ? c.ink2 : c.ink, size: 18),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
-            ),
-            const SizedBox(width: 12),
-            Text(label, style: MullType.caption(c.ink3)),
-            if (amount != null) ...[
-              const SizedBox(width: 10),
-              AnimatedAmount(amount, style: MullType.cardAmount(c.ink)),
-            ],
-          ],
-        ),
-      );
-    }
-
-    final roomy = density == _Density.roomy;
-    final others = group.seated.where((m) => !m.isYou).toList();
-    final roster = others.isEmpty
-        ? 'Nobody else in here yet'
-        : others.length <= 3
-        ? others.map(store.shortName).join(', ')
-        : '${others.take(2).map(store.shortName).join(', ')} and ${others.length - 2} more';
-
-    return wrap(
-      radius: roomy ? 32 : 28,
-      padding: EdgeInsets.fromLTRB(24, roomy ? 24 : 20, 24, roomy ? 26 : 22),
-      Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              GroupBadge(group: group, size: roomy ? 44 : 38, glyphSize: roomy ? 21 : 18, quiet: true),
-              const SizedBox(width: 14),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      group.title,
-                      style: MullType.cardTitle(settled ? c.ink2 : c.ink, size: roomy ? 21 : 19),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    const SizedBox(height: 3),
-                    Text(
-                      roster,
-                      style: MullType.caption(c.ink3, size: 11.5),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-          SizedBox(height: roomy ? 24 : 16),
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              Expanded(child: Text(label, style: MullType.caption(c.ink3))),
-              if (amount != null)
-                AnimatedAmount(
-                  amount,
-                  style: roomy
-                      ? excon(38, tracking: -.04, height: .95, color: c.ink)
-                      : MullType.cardAmount(c.ink, size: 24),
-                ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-/// Long-press on a ledger row.
-Future<void> showLedgerActions(BuildContext context, Group group) {
-  return showMullSheet(
-    context,
-    fitContent: true,
-    builder: (sheet) {
-      void run(VoidCallback action) {
-        Navigator.of(sheet).pop();
-        Future.delayed(const Duration(milliseconds: 160), action);
-      }
-
-      return Padding(
-        padding: const EdgeInsets.fromLTRB(Gutter.text, 26, Gutter.text, 22),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Text(group.title, style: MullType.screenTitle(sheet.c.ink), maxLines: 2),
-            const SizedBox(height: 16),
-            CardRows(
-              children: [
-                SheetAction('Add an expense', onTap: () => run(() => showAddExpense(context, group))),
-                // The thing people most often came here to do, and the one
-                // action this menu did not offer. Settling was four screens
-                // deep with no shortcut to it anywhere.
-                if (!group.youAreSquare)
-                  SheetAction(
-                    'Settle up',
-                    detail: switch ((group.youOweHere, group.owedToYouHere)) {
-                      (> 0 && final owe, > 0 && final back) => 'you owe ${inr(owe)} · get back ${inr(back)}',
-                      (> 0 && final owe, _) => 'you owe ${inr(owe)}',
-                      (_, final back) => 'you get back ${inr(back)}',
-                    },
-                    onTap: () => run(
-                      () => Navigator.of(context).push(
-                        // Settling up is on the group's Overview now.
-                        CupertinoPageRoute(builder: (_) => GroupScreen(groupId: group.id)),
-                      ),
-                    ),
-                  ),
-                SheetAction(
-                  'Send summary on WhatsApp',
-                  onTap: () => run(() => shareGroupSummary(context, group)),
-                ),
-                // Only an admin can delete a group; the server refuses anyone
-                // else, and the group used to vanish here and come back.
-                if (group.youAreAdmin)
-                  SheetAction(
-                    group.isDirect ? 'Delete this ledger' : 'Delete group',
-                    destructive: true,
-                    onTap: () => run(() => confirmDeleteGroup(context, group)),
-                  ),
-              ],
-            ),
-          ],
-        ),
-      );
-    },
-  );
-}

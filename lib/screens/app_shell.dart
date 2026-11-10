@@ -9,7 +9,7 @@ import '../data/remote/push_service.dart';
 import '../data/store.dart';
 import '../ui/sheet.dart';
 import '../ui/tokens.dart';
-import 'home_screen.dart';
+import 'home/home_shell.dart';
 import 'notices_sheet.dart';
 
 /// The app around the home screen.
@@ -166,7 +166,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
             child: Navigator(
               key: _navigator,
               onGenerateRoute: (settings) =>
-                  CupertinoPageRoute(builder: (_) => const HomeScreen(), settings: settings),
+                  CupertinoPageRoute(builder: (_) => const HomeShell(), settings: settings),
             ),
           ),
         ),

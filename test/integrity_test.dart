@@ -8,8 +8,6 @@ import 'package:mull/data/models.dart';
 import 'package:mull/data/remote/groups_sync.dart';
 import 'package:mull/data/store.dart';
 import 'package:mull/main.dart';
-import 'package:mull/screens/home_screen.dart';
-import 'package:mull/ui/tokens.dart';
 
 void main() {
   group('saving', () {
@@ -204,22 +202,6 @@ void main() {
   });
 
   group('the screens still say it', () {
-    testWidgets('the footer counts the people you are not square with', (t) async {
-      await t.binding.setSurfaceSize(const Size(390, 844));
-      addTearDown(() => t.binding.setSurfaceSize(null));
-      final store = MullStore.memory()..loadSample();
-      final unsquare = store.standings.where((s) => !s.isSquare).length;
-      await t.pumpWidget(StoreScope(
-        store: store,
-        child: MaterialApp(theme: buildTheme(MullColors.dark), home: const HomeScreen()),
-      ));
-      await t.pump(const Duration(milliseconds: 600));
-      final footer = find.textContaining('to square up with');
-      await t.scrollUntilVisible(footer, 300, scrollable: find.byType(Scrollable).last);
-      await t.pump(const Duration(milliseconds: 400));
-      expect(t.widget<Text>(footer).data, '$unsquare people to square up with');
-    });
-
     testWidgets('the app follows the theme setting, and only rebuilds for it', (t) async {
       final store = MullStore.memory()..completeOnboarding(name: 'Bharat');
       await t.pumpWidget(MullApp(store: store));
