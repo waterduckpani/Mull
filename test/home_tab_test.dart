@@ -87,6 +87,44 @@ void main() {
     );
   });
 
+  homeTest('who owes you is on Home, not three taps away', (t) async {
+    final store = MullStore.memory()..completeOnboarding(name: 'Bharat');
+    final goa = store.addGroup('Goa', ['Vivan']);
+    store.addExpense(goa,
+        description: 'Villa', amount: 1000, payerId: goa.you!.id,
+        shares: {goa.you!.id: 500, goa.members[1].id: 500});
+    await pumpShell(t, store);
+    expect(find.text('WHO OWES WHO'), findsOneWidget);
+    final line = find.byKey(ValueKey('owes-${goa.members[1].id}'));
+    expect(find.descendant(of: line, matching: find.text('Vivan')).hitTestable(), findsOneWidget);
+    expect(find.descendant(of: line, matching: find.textContaining('Owes you · Goa')), findsOneWidget);
+    expect(find.descendant(of: line, matching: find.text('₹500')), findsOneWidget);
+    expect(find.descendant(of: line, matching: find.text('Nudge')), findsOneWidget);
+  });
+
+  homeTest('past four people, the rest are on People', (t) async {
+    final store = MullStore.memory()..completeOnboarding(name: 'Bharat');
+    final trip = store.addGroup('Trip', ['A', 'B', 'C', 'D', 'E']);
+    store.addExpense(trip,
+        description: 'Fuel', amount: 600, payerId: trip.you!.id,
+        shares: {for (final m in trip.members) m.id: 100});
+    await pumpShell(t, store);
+    expect(
+      find.byWidgetPredicate((w) => w.key is ValueKey<String> && (w.key! as ValueKey<String>).value.startsWith('owes-')),
+      findsNWidgets(4),
+    );
+    await t.tap(find.text('1 more on People'));
+    await t.pumpAndSettle();
+    expect(find.byKey(const ValueKey('home-tab-people')).hitTestable(), findsOneWidget);
+  });
+
+  homeTest('nobody owing anybody leaves the card out', (t) async {
+    final store = MullStore.memory()..completeOnboarding(name: 'Bharat');
+    store.addGroup('Goa', ['Vivan']);
+    await pumpShell(t, store);
+    expect(find.text('WHO OWES WHO'), findsNothing);
+  });
+
   homeTest('"see who" goes to People', (t) async {
     await pumpShell(t, MullStore.memory()..loadSample());
     await t.tap(find.textContaining('owed to you · see who'));

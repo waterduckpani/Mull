@@ -17,8 +17,10 @@ import '../groups/group_sheets.dart';
 import '../groups/icon_picker.dart';
 import '../groups/recurring_sheets.dart';
 import '../friends_sheet.dart';
+import '../people_sheet.dart';
 import 'home_shell.dart';
 import 'needs_you.dart';
+import 'people_tab.dart' show PersonLine;
 
 /// The Home tab: where you stand, what needs you, and what just happened.
 ///
@@ -107,6 +109,13 @@ class HomeTabPage extends StatelessWidget {
             ]
           : [
               _Headline(people: people),
+              _WhoOwes(
+                people: people,
+                onOpenLedger: (id) {
+                  final g = store.groupById(id);
+                  if (g != null) open(g);
+                },
+              ),
               requests,
               if (cards.isNotEmpty) ...[
                 Eyebrow(
@@ -302,6 +311,85 @@ class _Headline extends StatelessWidget {
                   ? "Some changes haven't synced yet. Mull keeps trying."
                   : "Some changes haven't synced yet. They'll go up when you're back online.",
               style: MullType.caption(c.ink3, size: 12),
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+/// Who the number at the top is, person by person, with Pay or Nudge on each.
+///
+/// The headline said "You're owed ₹500" and the only way to find out by whom
+/// was Groups, then the group, then its Overview. The number and who it is are
+/// one answer, so they sit together.
+class _WhoOwes extends StatelessWidget {
+  const _WhoOwes({required this.people, required this.onOpenLedger});
+
+  /// [MullStore.standings], worked out once by the home screen.
+  final List<Standing> people;
+  final void Function(String groupId) onOpenLedger;
+
+  /// Past this many, the rest are on People.
+  static const _shown = 4;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.c;
+    // What you owe first, since that one is yours to do; the biggest first
+    // within each.
+    final open = [
+      for (final s in people)
+        if (!s.isSquare) s,
+    ]..sort((a, b) => a.youOwe != b.youOwe ? (a.youOwe ? -1 : 1) : b.magnitude.compareTo(a.magnitude));
+    if (open.isEmpty) return const SizedBox.shrink();
+    final more = open.length - _shown;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const Eyebrow(
+          'Who owes who',
+          size: 10.5,
+          tracking: .18,
+          padding: EdgeInsets.fromLTRB(Gutter.text, 34, Gutter.text, 14),
+        ),
+        Surface(
+          lift: Lift.card,
+          radius: 26,
+          margin: const EdgeInsets.symmetric(horizontal: Gutter.card),
+          padding: const EdgeInsets.fromLTRB(18, 4, 14, 4),
+          child: CardRows(
+            children: [
+              for (final s in open.take(_shown))
+                PersonLine(
+                  key: ValueKey('owes-${s.member.id}'),
+                  standing: s,
+                  sayDirection: true,
+                  action: s.youOwe ? 'Pay' : 'Nudge',
+                  onAction: () => s.youOwe ? settleWithPerson(context, s) : nudgePerson(context, s),
+                  onOpenLedger: onOpenLedger,
+                ),
+            ],
+          ),
+        ),
+        if (more > 0)
+          Pressable(
+            onTap: () => HomeShellScope.of(context).select(HomeTab.people),
+            scale: .99,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(Gutter.text, 14, Gutter.text, 0),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      '$more more on People',
+                      style: MullType.caption(c.ink3, size: 12.5),
+                    ),
+                  ),
+                  MullIcon(MullGlyph.chevronRight, size: 13, color: c.ink3, strokeWidth: 1.8),
+                ],
+              ),
             ),
           ),
       ],

@@ -56,7 +56,7 @@ class _PeopleTabPageState extends State<PeopleTabPage> {
           child: CardRows(
             children: [
               for (final s in list)
-                _PersonLine(
+                PersonLine(
                   key: ValueKey(s.member.id),
                   standing: s,
                   action: action,
@@ -142,19 +142,24 @@ class _PeopleTabPageState extends State<PeopleTabPage> {
 }
 
 /// One person you owe, or who owes you, with the one thing to do about it.
-class _PersonLine extends StatelessWidget {
-  const _PersonLine({
+class PersonLine extends StatelessWidget {
+  const PersonLine({
     super.key,
     required this.standing,
     required this.action,
     required this.onAction,
     required this.onOpenLedger,
+    this.sayDirection = false,
   });
 
   final Standing standing;
   final String action;
   final VoidCallback onAction;
   final void Function(String groupId) onOpenLedger;
+
+  /// Whether the line says which way the money goes. Here the section above
+  /// says it; on Home both directions share one card.
+  final bool sayDirection;
 
   @override
   Widget build(BuildContext context) {
@@ -164,6 +169,7 @@ class _PersonLine extends StatelessWidget {
     final name = store.shortName(member);
     final initials = member.name.trim().split(RegExp(r'\s+')).take(2).map((w) => w.isEmpty ? '' : w[0]).join().toUpperCase();
     final where = [
+      if (sayDirection) standing.theyOweYou ? 'Owes you' : 'You owe',
       if (standing.groups.length == 1)
         standing.groups.first.isDirect ? 'just the two of you' : standing.groups.first.title
       else
