@@ -54,4 +54,44 @@ void main() {
     await pumpPage(t, rows: 1);
     expect(backing(t), 0, reason: 'a solid band over nothing would just hide the backdrop');
   });
+
+  testWidgets('bottomInset keeps the last row clear of a bar laid over the page', (t) async {
+    await t.binding.setSurfaceSize(const Size(390, 844));
+    addTearDown(() => t.binding.setSurfaceSize(null));
+    await t.pumpWidget(
+      StoreScope(
+        store: MullStore.memory(),
+        child: MaterialApp(
+          theme: buildTheme(MullColors.dark),
+          home: Builder(
+            builder: (context) => Stack(
+              children: [
+                MullPage(
+                  bottomInset: 60,
+                  header: const SizedBox(height: 44),
+                  children: [for (var i = 0; i < 20; i++) SizedBox(height: 80, child: Text('row $i'))],
+                ),
+                Positioned(
+                  left: 0,
+                  right: 0,
+                  bottom: ShellMetrics.ctaBottom(context),
+                  height: 60,
+                  child: const ColoredBox(key: Key('bar'), color: Color(0xFF000000)),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+    await t.pumpAndSettle();
+    await t.drag(find.byType(Scrollable).first, const Offset(0, -4000));
+    await t.pumpAndSettle();
+
+    expect(
+      t.getRect(find.text('row 19')).bottom,
+      lessThanOrEqualTo(t.getRect(find.byKey(const Key('bar'))).top),
+      reason: 'the last row has to scroll all the way out from under the bar',
+    );
+  });
 }

@@ -40,6 +40,7 @@ class MullPage extends StatefulWidget {
     this.footnote,
     this.header,
     this.onRefresh,
+    this.bottomInset = 0,
   });
 
   final List<Widget> children;
@@ -62,6 +63,11 @@ class MullPage extends StatefulWidget {
 
   /// Replaces the wordmark bar. Detail pages put a back button there instead.
   final Widget? header;
+
+  /// Room left under the content for something laid over the page from
+  /// outside it, such as the group screen's bar, so the last row can scroll
+  /// clear of it.
+  final double bottomInset;
 
   @override
   State<MullPage> createState() => _MullPageState();
@@ -154,7 +160,7 @@ class _MullPageState extends State<MullPage> {
                     SliverPadding(
                       padding: EdgeInsets.only(
                         top: headerTop + 44,
-                        bottom: ctaBottom + _bottomHeight + 24,
+                        bottom: ctaBottom + _bottomHeight + 24 + widget.bottomInset,
                       ),
                       sliver: SliverList(
                         delegate: SliverChildListDelegate(widget.children),
