@@ -135,6 +135,40 @@ void main() {
     });
   });
 
+  // A sheet takes the group when it opens and writes to it when you tap Add.
+  // A pull in between (someone else's change, or the app coming back from the
+  // camera) used to swap in a new Group object, so the expense went onto a
+  // copy nobody held: never saved, never pushed, while its notice went out.
+  group('a sheet left open across a pull', () {
+    test('an expense added to the group it opened with is kept', () {
+      final opened = current();
+      store.replaceGroups([serverCopy(opened, edit: (g) => g.name = 'Flat 4B')]);
+
+      store.addExpense(
+        opened,
+        description: 'Dinner',
+        amount: 6000,
+        payerId: me,
+        shares: splitEqually(6000, [me, dev]),
+      );
+
+      expect(current().expenses.map((e) => e.description), contains('Dinner'));
+      expect(current().name, 'Flat 4B', reason: 'the pull still lands');
+    });
+
+    test('an edit to an expense it opened with is kept', () {
+      final opened = current().expenses.single;
+      store.replaceGroups([serverCopy(current(), edit: (g) => g.name = 'Flat 4B')]);
+
+      opened.amount = 26000;
+      store.updateExpense(current(), opened);
+
+      expect(current().expenses.single.amount, 26000);
+      expect(current().printed['e:${opened.id}'], isNot(current().acked['e:${opened.id}']),
+          reason: 'still to be pushed');
+    });
+  });
+
   group('undo after the delete already landed', () {
     test('a restored expense is sent again, so the server un-deletes it', () {
       final rent = current().expenses.single;

@@ -199,7 +199,11 @@ class MullStore extends ChangeNotifier {
         if (gone.contains('${kind.name}:$id')) continue;
         final here = localById[id];
         final changedHere = here != null && !legacy && before['$prefix:$id'] != printOf(here);
-        out.add(changedHere ? here : row);
+        // The object already held, when the server's is the same row: an edit
+        // sheet opened before this pull writes to that one, and swapping it
+        // out sent the edit to a copy nobody reads.
+        final same = here != null && jsonEncode(here) == jsonEncode(row);
+        out.add(changedHere || same ? here : row);
       }
       final served = {for (final r in theirs) idOf(r)};
       for (final row in mine) {
@@ -239,25 +243,39 @@ class MullStore extends ChangeNotifier {
       }
     }
 
-    return Group(
-      id: server.id,
-      name: groupChangedHere ? local.name : server.name,
-      kind: server.kind,
-      icon: groupChangedHere ? local.icon : server.icon,
-      members: members,
-      expenses: rows<Expense>(
-        'e', TombstoneKind.expense, local.expenses, server.expenses, (e) => e.id, (e) => e.syncPrint,
-      ),
-      settlements: rows<Settlement>(
-        's', TombstoneKind.settlement, local.settlements, server.settlements, (s) => s.id, (s) => s.syncPrint,
-      ),
-      recurring: recurring,
-      tombstones: local.tombstones,
-      acked: acked,
-      createdAt: server.createdAt,
-      syncedAt: server.syncedAt,
-      serverRev: server.serverRev,
+    final expenses = rows<Expense>(
+      'e', TombstoneKind.expense, local.expenses, server.expenses, (e) => e.id, (e) => e.syncPrint,
     );
+    final settlements = rows<Settlement>(
+      's', TombstoneKind.settlement, local.settlements, server.settlements, (s) => s.id, (s) => s.syncPrint,
+    );
+
+    // Into the group already held, not a new one. A sheet takes the group
+    // when it opens and writes to it when you tap Add; a pull in between used
+    // to swap in a fresh object, so the expense went onto a copy that was
+    // never saved or pushed, while its notice went out to everyone. Each list
+    // is worked out above before any of them is touched here.
+    void refill<T>(List<T> list, List<T> next) {
+      // Schedules kept as they were are this very list; clearing it first
+      // would empty both.
+      if (identical(list, next)) return;
+      list
+        ..clear()
+        ..addAll(next);
+    }
+
+    refill(local.members, members);
+    refill(local.expenses, expenses);
+    refill(local.settlements, settlements);
+    refill(local.recurring, recurring);
+    local.acked
+      ..clear()
+      ..addAll(acked);
+    return local
+      ..name = groupChangedHere ? local.name : server.name
+      ..icon = groupChangedHere ? local.icon : server.icon
+      ..syncedAt = server.syncedAt
+      ..serverRev = server.serverRev;
   }
 
   /// Groups deleted on this phone that the server has not yet been told
