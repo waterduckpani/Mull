@@ -8,6 +8,7 @@ import '../../ui/tab_bar.dart';
 import '../../ui/tokens.dart';
 import '../groups/create_group_flow.dart';
 import '../groups/group_screen.dart';
+import '../profile_sheet.dart';
 import 'groups_tab.dart';
 import 'home_tab.dart';
 import 'people_tab.dart';
@@ -86,7 +87,7 @@ class _HomeShellState extends State<HomeShell> {
       HomeTab.home => HomeTabPage(bottomInset: MullTabBar.height, onStart: _start),
       HomeTab.groups => GroupsTabPage(bottomInset: MullTabBar.height, onStart: _start),
       HomeTab.people => const PeopleTabPage(bottomInset: MullTabBar.height),
-      _ => MullPage(bottomInset: MullTabBar.height, children: [PageTitle(tab.label)]),
+      HomeTab.you => const YouTabPage(bottomInset: MullTabBar.height),
     },
   );
 

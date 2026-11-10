@@ -512,11 +512,12 @@ class BrandBar extends StatelessWidget {
             ),
             const SizedBox(width: 8),
           ],
-          _BarButton(
-            semanticLabel: 'Profile and settings',
-            onTap: onProfile,
-            child: Text(initial, style: ranade(14.5, color: c.ink2)),
-          ),
+          if (onProfile != null)
+            _BarButton(
+              semanticLabel: 'Profile and settings',
+              onTap: onProfile,
+              child: Text(initial, style: ranade(14.5, color: c.ink2)),
+            ),
         ],
       ),
     );

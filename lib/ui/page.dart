@@ -3,12 +3,9 @@ import 'package:flutter/material.dart';
 
 import '../data/notices.dart';
 import '../data/store.dart';
-import '../screens/friends_sheet.dart';
 import '../screens/notices_sheet.dart';
-import '../screens/profile_sheet.dart';
 import 'tokens.dart';
 import 'widgets.dart';
-import '../screens/groups/group_screen.dart';
 
 /// Layout constants shared by every page.
 ///
@@ -185,17 +182,10 @@ class _MullPageState extends State<MullPage> {
                     0,
                   ),
                   child: widget.header ??
+                      // Friends and your profile are tabs now (People, You), so
+                      // the bar keeps the wordmark and the bell.
                       BrandBar(
                         initial: store.profile.initial,
-                        onProfile: () => showProfileSheet(context),
-                        onFriends: () => showFriendsSheet(
-                          context,
-                          onOpenLedger: (id) => Navigator.of(context).push(
-                            CupertinoPageRoute(
-                              builder: (_) => GroupScreen(groupId: id),
-                            ),
-                          ),
-                        ),
                         onNotices: inbox == null ? null : () => showNoticesSheet(context),
                         unread: inbox?.unread ?? 0,
                       ),

@@ -7,18 +7,14 @@ import '../core/links.dart';
 import '../core/upi.dart';
 import '../data/remote/auth_service.dart';
 import '../data/remote/backend.dart';
-import '../data/remote/friends_service.dart';
 import '../data/store.dart';
 import '../ui/icons.dart';
 import '../ui/sheet.dart';
 import '../ui/tokens.dart';
+import '../ui/page.dart';
 import '../ui/widgets.dart';
-import 'friends_sheet.dart';
 import 'home/home_tab.dart' show showHowItWorks;
 import 'upi_picker.dart';
-
-Future<void> showProfileSheet(BuildContext context) =>
-    showMullSheet(context, height: 780, builder: (_) => const _ProfileSheet());
 
 /// A yes-or-no sheet for something that cannot be taken back.
 Future<bool> _confirm(
@@ -157,14 +153,20 @@ class _AccountRowState extends State<_AccountRow> {
   }
 }
 
-class _ProfileSheet extends StatefulWidget {
-  const _ProfileSheet();
+/// The You tab: your name, how you get paid and how you pay, and the
+/// account. It was a sheet behind your initial in the corner of the home
+/// screen; it is a tab of its own now, and Friends moved to People.
+class YouTabPage extends StatefulWidget {
+  const YouTabPage({super.key, this.bottomInset = 0});
+
+  /// Room under the content for the bar.
+  final double bottomInset;
 
   @override
-  State<_ProfileSheet> createState() => _ProfileSheetState();
+  State<YouTabPage> createState() => _YouTabPageState();
 }
 
-class _ProfileSheetState extends State<_ProfileSheet> {
+class _YouTabPageState extends State<YouTabPage> {
   late final _name = TextEditingController(text: context.readStore.profile.name);
 
   /// The server copy of your name, saved once typing stops. It never used to
@@ -179,30 +181,6 @@ class _ProfileSheetState extends State<_ProfileSheet> {
     _saveName?.cancel();
     if (name.isEmpty) return;
     _saveName = Timer(const Duration(milliseconds: 700), () => AuthService.saveProfile(name: name));
-  }
-
-  /// A count, and a nudge when someone is waiting on an answer — a request
-  /// nobody notices is the same as no request.
-  String _friendsLabel = '';
-
-  @override
-  void initState() {
-    super.initState();
-    _countFriends();
-  }
-
-  Future<void> _countFriends() async {
-    final friends = await FriendsService.list();
-    if (!mounted) return;
-    final waiting = friends.where((f) => f.state == FriendState.incoming).length;
-    final connected = friends.where((f) => f.state == FriendState.friends).length;
-    setState(() {
-      _friendsLabel = waiting > 0
-          ? '$waiting waiting'
-          : connected == 0
-          ? 'None yet'
-          : '$connected';
-    });
   }
 
   @override
@@ -277,17 +255,17 @@ class _ProfileSheetState extends State<_ProfileSheet> {
     final store = context.store;
     final p = store.profile;
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
+    return MullPage(
+      bottomInset: widget.bottomInset,
+      glow: const GlowSpec(size: 420, top: -160, right: -150),
       children: [
-        const SheetHeader('You'),
-        Expanded(
-          child: SingleChildScrollView(
-            physics: const BouncingScrollPhysics(),
-            padding: const EdgeInsets.fromLTRB(30, 12, 30, 20),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(30, 22, 30, 20),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              const Eyebrow('You', size: 10.5, tracking: .18),
+              const SizedBox(height: 6),
                 BigField(
                   controller: _name,
                   hint: 'Your name',
@@ -314,17 +292,6 @@ class _ProfileSheetState extends State<_ProfileSheet> {
                       label: 'Pay with',
                       value: UpiApp.byKey(p.payWith)?.label ?? 'Ask me',
                       onTap: () => chooseUpiApp(context, ask: true),
-                      trailing: MullIcon(
-                        MullGlyph.chevronRight,
-                        size: 14,
-                        color: c.ink2,
-                        strokeWidth: 1.8,
-                      ),
-                    ),
-                    FieldRow(
-                      label: 'Friends',
-                      value: _friendsLabel,
-                      onTap: () => showFriendsSheet(context),
                       trailing: MullIcon(
                         MullGlyph.chevronRight,
                         size: 14,
@@ -361,8 +328,7 @@ class _ProfileSheetState extends State<_ProfileSheet> {
                   },
                   onChanged: (i) => store.updateProfile((p) => p.theme = ThemeMode.values[[0, 1, 2][i]]),
                 ),
-              ],
-            ),
+            ],
           ),
         ),
       ],
