@@ -10,6 +10,7 @@ import '../../ui/tokens.dart';
 import '../../ui/widgets.dart';
 import 'expense_sheet.dart';
 import 'group_sheets.dart';
+import 'split_editor.dart';
 
 /// Everything that has happened in a group, in two lists.
 ///
@@ -259,12 +260,7 @@ class ExpenseRow extends StatelessWidget {
     // paid, because the cost was somebody else's.
     final share = expense.shares[group.you?.id] ?? 0;
 
-    final split = switch (expense.method) {
-      SplitMethod.equal => 'split ${expense.shares.length} ways',
-      SplitMethod.exact => 'exact amounts',
-      SplitMethod.shares => 'by shares',
-      SplitMethod.percent => 'by percentage',
-    };
+    final split = describeSplit(group, expense.shares, expense.method, store.shortName);
 
     return _Row(
       title: expense.description,

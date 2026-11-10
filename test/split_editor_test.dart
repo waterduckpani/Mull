@@ -145,6 +145,21 @@ void main() {
     expect(model.summary(name), 'Dev and Raj owe you about ₹101 each.');
   });
 
+  group('in a list', () {
+    String says(Map<String, int> shares, SplitMethod method) => describeSplit(flat, shares, method, name);
+
+    test('one person owing all of it is "for" them, not "split 1 ways"', () {
+      expect(says({dev.id: 200}, SplitMethod.equal), 'for Dev');
+      expect(says({you.id: 200}, SplitMethod.equal), 'for you');
+    });
+
+    test('the rest read as before', () {
+      expect(says({you.id: 100, dev.id: 100}, SplitMethod.equal), 'split 2 ways');
+      expect(says({you.id: 150, dev.id: 50}, SplitMethod.exact), 'uneven split');
+      expect(says({you.id: 150, dev.id: 50}, SplitMethod.percent), 'by percentage');
+    });
+  });
+
   test('a big group says how many, not every name', () {
     final big = Group(name: 'Trip', members: [you, for (final n in ['A', 'B', 'C', 'D']) Member(name: n)]);
     final model = SplitModel(group: big, amount: 500);

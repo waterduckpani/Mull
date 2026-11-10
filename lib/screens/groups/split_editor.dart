@@ -280,6 +280,23 @@ class SplitModel extends ChangeNotifier {
   }
 }
 
+/// How a split reads in a list: "split 3 ways", "for Neel", "uneven split".
+///
+/// One person owing all of it used to read "split 1 ways", and that is now the
+/// commonest uneven bill there is: you paid, it was theirs.
+String describeSplit(Group group, Map<String, int> shares, SplitMethod method, String Function(Member) nameOf) {
+  if (shares.length == 1) {
+    final m = group.memberById(shares.keys.single);
+    return m == null ? 'for one person' : (m.isYou ? 'for you' : 'for ${nameOf(m)}');
+  }
+  return switch (method) {
+    SplitMethod.equal => 'split ${shares.length} ways',
+    SplitMethod.exact => 'uneven split',
+    SplitMethod.shares => 'by shares',
+    SplitMethod.percent => 'by percentage',
+  };
+}
+
 /// Who paid, who it was for, and what that means in words.
 class SplitFields extends StatelessWidget {
   const SplitFields({super.key, required this.model, this.payerQuestion});

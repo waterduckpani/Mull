@@ -185,6 +185,13 @@ class _DueSheetState extends State<_DueSheet> {
                   )
                 else
                   SplitFields(model: _split),
+                // The split is folded away, so the Add button going grey needs
+                // a reason next to it: an uneven bill at a new amount has a gap
+                // only the people in it can decide how to share.
+                if (!_editingSplit && _split.problem != null && _amount.amount != null) ...[
+                  const SizedBox(height: 12),
+                  Text('${_split.problem} Tap Change to fix the split.', style: ranade(12.5, color: c.ink2)),
+                ],
               ],
             ),
           ),
@@ -440,6 +447,11 @@ class _RecurringEditorState extends State<_RecurringEditor> {
 
   String get _splitSummary {
     final count = _split.included.length;
+    final shares = _split.shares;
+    if (shares.length == 1) {
+      final m = widget.group.memberById(shares.keys.single);
+      if (m != null) return m.isYou ? 'All yours' : 'All ${context.readStore.shortName(m)}\'s';
+    }
     return switch (_split.method) {
       SplitMethod.equal => 'Equally, $count ${count == 1 ? 'way' : 'ways'}',
       SplitMethod.exact => 'Uneven',

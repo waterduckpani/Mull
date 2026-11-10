@@ -84,10 +84,13 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
   /// six digits from an email. See [AuthService.reviewEmail].
   bool get _review => AuthService.isReview(_email.text);
 
+  /// Where this flow starts, which is the one step Back may leave the app from.
+  late final _Step _first = _returning ? (_localOnly ? _Step.name : _Step.email) : _Step.welcome;
+
   @override
   void initState() {
     super.initState();
-    _step = _returning ? (_localOnly ? _Step.name : _Step.email) : _Step.welcome;
+    _step = _first;
     for (final c in [_email, _code, _name, _upi]) {
       c.addListener(() => setState(() {}));
     }
@@ -360,9 +363,7 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
   (String, VoidCallback?) get _cta => switch (_step) {
     _Step.welcome => (
       'Get started',
-      () => _localOnly
-          ? _goTo(_Step.name, focus: _nameFocus)
-          : _goTo(_Step.email, focus: _emailFocus),
+      () => _localOnly ? _goTo(_Step.name, focus: _nameFocus) : _goTo(_Step.email, focus: _emailFocus),
     ),
     _Step.email => (_busy ? 'Sending' : 'Send me a code', _busy ? null : _sendCode),
     _Step.code => (_busy ? 'Checking' : 'Continue', _busy ? null : _verify),
@@ -459,71 +460,82 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
             ],
           );
 
-    return Scaffold(
-      backgroundColor: c.screen,
-      resizeToAvoidBottomInset: false,
-      body: Stack(
-        children: [
-          Positioned.fill(
-            child: Backdrop(
-              glow: GlowSpec(
-                size: 460,
-                top: -170,
-                left: onWelcome ? -150 : null,
-                right: onWelcome ? null : -150,
+    // The steps are one screen, not routes, so Android's back gesture went
+    // straight past them and closed the app: swiping back to fix a mistyped
+    // email lost the whole sign-up. Back now does what the arrow does. Where
+    // there is no going back it does nothing, and only the first step lets
+    // the app close.
+    return PopScope(
+      canPop: _step == _first,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) _back?.call();
+      },
+      child: Scaffold(
+        backgroundColor: c.screen,
+        resizeToAvoidBottomInset: false,
+        body: Stack(
+          children: [
+            Positioned.fill(
+              child: Backdrop(
+                glow: GlowSpec(
+                  size: 460,
+                  top: -170,
+                  left: onWelcome ? -150 : null,
+                  right: onWelcome ? null : -150,
+                ),
               ),
             ),
-          ),
-          SafeArea(
-            bottom: false,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                _TopBar(step: _step, steps: _numbered, onBack: _back),
-                Expanded(
-                  child: SingleChildScrollView(
-                    physics: const BouncingScrollPhysics(),
-                    padding: const EdgeInsets.fromLTRB(Gutter.text, 0, Gutter.text, 24),
-                    child: ConstrainedBox(
-                      constraints: BoxConstraints(
-                        minHeight: MediaQuery.sizeOf(context).height * .52,
-                      ),
-                      child: AnimatedSwitcher(
-                        duration: const Duration(milliseconds: 320),
-                        child: body,
+            SafeArea(
+              bottom: false,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  _TopBar(step: _step, steps: _numbered, onBack: _back),
+                  Expanded(
+                    child: SingleChildScrollView(
+                      physics: const BouncingScrollPhysics(),
+                      padding: const EdgeInsets.fromLTRB(Gutter.text, 0, Gutter.text, 24),
+                      child: ConstrainedBox(
+                        constraints: BoxConstraints(
+                          minHeight: MediaQuery.sizeOf(context).height * .52,
+                        ),
+                        child: AnimatedSwitcher(
+                          duration: const Duration(milliseconds: 320),
+                          child: body,
+                        ),
                       ),
                     ),
                   ),
-                ),
-                Padding(
-                  padding: EdgeInsets.fromLTRB(
-                    Gutter.card,
-                    8,
-                    Gutter.card,
-                    keyboard > 0 ? keyboard + 12 : 30,
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      if (keyboard == 0 && !onWelcome && _step != _Step.ready)
-                        const Padding(
-                          padding: EdgeInsets.only(bottom: 14),
-                          child: Footnote('No money ever moves through Mull.'),
-                        ),
-                      PillButton(label, busy: busy, onTap: _canAdvance ? action : null),
-                      if (_step == _Step.ready) ...[
-                        const SizedBox(height: 8),
-                        SecondaryButton('Invite someone to Mull', onTap: _invite),
-                        const SizedBox(height: 8),
-                        SecondaryButton(_reachedOut ? 'Take me in' : 'Skip for now', onTap: _done),
+                  Padding(
+                    padding: EdgeInsets.fromLTRB(
+                      Gutter.card,
+                      8,
+                      Gutter.card,
+                      keyboard > 0 ? keyboard + 12 : 30,
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        if (keyboard == 0 && !onWelcome && _step != _Step.ready)
+                          const Padding(
+                            padding: EdgeInsets.only(bottom: 14),
+                            child: Footnote('No money ever moves through Mull.'),
+                          ),
+                        PillButton(label, busy: busy, onTap: _canAdvance ? action : null),
+                        if (_step == _Step.ready) ...[
+                          const SizedBox(height: 8),
+                          SecondaryButton('Invite someone to Mull', onTap: _invite),
+                          const SizedBox(height: 8),
+                          SecondaryButton(_reachedOut ? 'Take me in' : 'Skip for now', onTap: _done),
+                        ],
                       ],
-                    ],
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }

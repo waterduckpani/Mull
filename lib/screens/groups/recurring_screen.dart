@@ -9,6 +9,7 @@ import '../../ui/page.dart';
 import '../../ui/tokens.dart';
 import '../../ui/widgets.dart';
 import 'recurring_sheets.dart';
+import 'split_editor.dart';
 
 /// The things that come round on their own.
 ///
@@ -327,7 +328,7 @@ class _ScheduleCard extends StatelessWidget {
               Text(
                 [
                   if (schedule.paused) 'Paused' else if (schedule.hasEnded) 'Finished' else cadence,
-                  'split ${schedule.shares.length} ways',
+                  describeSplit(group, schedule.shares, schedule.method, store.shortName),
                   if (payer != null && !payer.isYou) '${store.shortName(payer)} pays',
                   if (schedule.autoAdd) 'adds itself',
                   if (last != null) '${monthLabel(last, store.now())} added',
