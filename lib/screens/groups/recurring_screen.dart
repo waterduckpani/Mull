@@ -47,12 +47,11 @@ class RecurringScreen extends StatelessWidget {
       bottomInset: bottomInset,
       glow: const GlowSpec(size: 430, top: -160, right: -150),
       header: const DetailBar(),
-      bottom: SecondaryButton(
-        'Add a recurring cost',
-        glyph: MullGlyph.plus,
-        onTap: () => showRecurringEditor(context, group),
-      ),
       children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(Gutter.text, 22, Gutter.text, 0),
+          child: Text(group.title, style: MullType.caption(c.ink3, size: 12.5)),
+        ),
         PageTitle(
           'Recurring',
           body: active.isEmpty
@@ -61,7 +60,7 @@ class RecurringScreen extends StatelessWidget {
                     're-opens on its date and asks.'
               : 'Standing costs for ${group.title}. Each one re-opens on its '
                     'date and settles like any other expense.',
-          padding: const EdgeInsets.fromLTRB(Gutter.text, 22, Gutter.text, 0),
+          padding: const EdgeInsets.fromLTRB(Gutter.text, 2, Gutter.text, 0),
         ),
 
         if (next != null) ...[
@@ -128,13 +127,24 @@ class RecurringScreen extends StatelessWidget {
                   ),
                   const SizedBox(height: 20),
                   InlineButton(
-                    'Set one up',
+                    'Add a recurring cost',
                     height: 48,
                     expand: true,
                     onTap: () => showRecurringEditor(context, group),
                   ),
                 ],
               ),
+            ),
+          )
+        else
+          // Inline rather than pinned: the bottom of the screen is the group's
+          // bar now.
+          Padding(
+            padding: const EdgeInsets.fromLTRB(Gutter.card, 30, Gutter.card, 0),
+            child: SecondaryButton(
+              'Add a recurring cost',
+              glyph: MullGlyph.plus,
+              onTap: () => showRecurringEditor(context, group),
             ),
           ),
       ],

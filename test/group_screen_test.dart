@@ -5,6 +5,7 @@ import 'package:mull/data/models.dart';
 import 'package:mull/data/store.dart';
 import 'package:mull/screens/groups/group_bar.dart';
 import 'package:mull/screens/groups/group_screen.dart';
+import 'package:mull/screens/groups/recurring_screen.dart';
 import 'package:mull/ui/tokens.dart';
 
 /// One group, four tabs, one bar that never moves.
@@ -107,5 +108,28 @@ void main() {
     await t.pump(const Duration(milliseconds: 300));
     expect(find.text('Add someone first'), findsOneWidget);
     await t.pump(const Duration(seconds: 5));
+  });
+
+  screenTest('Recurring keeps its add button inline', (t) async {
+    final store = sample();
+    await open(t, store, named(store, 'Flat'));
+    await tapTab(t, 'Recurring');
+    final button = find.text('Add a recurring cost');
+    await t.scrollUntilVisible(
+      button,
+      200,
+      scrollable: find.descendant(of: find.byType(RecurringScreen), matching: find.byType(Scrollable)).first,
+    );
+    await t.pumpAndSettle();
+    expect(t.getRect(button).bottom, lessThanOrEqualTo(t.getRect(find.byType(GroupBar)).top));
+  });
+
+  screenTest('and the empty state offers it once', (t) async {
+    final store = sample();
+    final trip = store.addGroup('Trip', ['Ritu']);
+    await open(t, store, trip);
+    await tapTab(t, 'Recurring');
+    expect(find.text('Add a recurring cost'), findsOneWidget);
+    expect(find.text('Set one up'), findsNothing);
   });
 }
