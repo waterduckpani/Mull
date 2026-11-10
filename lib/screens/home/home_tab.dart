@@ -493,7 +493,7 @@ class _WaitingClaimCard extends StatelessWidget {
 /// the request the first thing a new user needs to see, and it used to be a
 /// count inside the profile sheet.
 class FriendRequestsCard extends StatefulWidget {
-  const FriendRequestsCard({required this.onOpenLedger});
+  const FriendRequestsCard({super.key, required this.onOpenLedger});
 
   final void Function(String groupId) onOpenLedger;
 
