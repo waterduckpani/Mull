@@ -17,9 +17,12 @@ import 'group_sheets.dart';
 /// rather than interleaved: one is what things cost, the other is who has paid
 /// whom back. Nothing is ever removed for being old.
 class LedgerScreen extends StatefulWidget {
-  const LedgerScreen({super.key, required this.groupId});
+  const LedgerScreen({super.key, required this.groupId, this.bottomInset = 0});
 
   final String groupId;
+
+  /// Room under the content for the group screen's bar.
+  final double bottomInset;
 
   @override
   State<LedgerScreen> createState() => _LedgerScreenState();
@@ -41,6 +44,7 @@ class _LedgerScreenState extends State<LedgerScreen> {
     final settlements = [...group.settlements]..sort((a, b) => newestFirst(ledgerMoment(a), ledgerMoment(b)));
 
     return MullPage(
+      bottomInset: widget.bottomInset,
       glow: const GlowSpec(size: 430, top: -160, left: -150, right: null),
       header: const DetailBar(),
       footnote: onExpenses

@@ -17,9 +17,12 @@ import 'recurring_sheets.dart';
 /// for four months. So the next one due is the focal object on this screen,
 /// with the amount right there to be changed before it is recorded.
 class RecurringScreen extends StatelessWidget {
-  const RecurringScreen({super.key, required this.groupId});
+  const RecurringScreen({super.key, required this.groupId, this.bottomInset = 0});
 
   final String groupId;
+
+  /// Room under the content for the group screen's bar.
+  final double bottomInset;
 
   @override
   Widget build(BuildContext context) {
@@ -41,6 +44,7 @@ class RecurringScreen extends StatelessWidget {
     }
 
     return MullPage(
+      bottomInset: bottomInset,
       glow: const GlowSpec(size: 430, top: -160, right: -150),
       header: const DetailBar(),
       bottom: SecondaryButton(

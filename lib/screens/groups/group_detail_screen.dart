@@ -23,9 +23,12 @@ import 'settle_up_screen.dart';
 /// history. Now it answers "where do I stand" and hands off: settling up,
 /// what repeats, and what happened are each their own screen.
 class GroupDetailScreen extends StatelessWidget {
-  const GroupDetailScreen({super.key, required this.groupId});
+  const GroupDetailScreen({super.key, required this.groupId, this.bottomInset = 0});
 
   final String groupId;
+
+  /// Room under the content for the group screen's bar.
+  final double bottomInset;
 
   @override
   Widget build(BuildContext context) {
@@ -73,6 +76,7 @@ class GroupDetailScreen extends StatelessWidget {
     final nothingToSettle = transfers.isEmpty && group.placeholderTransfers.isEmpty;
 
     return MullPage(
+      bottomInset: bottomInset,
       glow: const GlowSpec(size: 440, top: -160, left: -150, right: null),
       onRefresh: store.pullNow,
       header: DetailBar(

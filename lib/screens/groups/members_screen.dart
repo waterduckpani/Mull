@@ -26,9 +26,12 @@ import 'create_group_flow.dart' show showAddSomeoneSheet;
 import 'group_sheets.dart';
 
 class GroupMembersScreen extends StatelessWidget {
-  const GroupMembersScreen({super.key, required this.groupId});
+  const GroupMembersScreen({super.key, required this.groupId, this.bottomInset = 0});
 
   final String groupId;
+
+  /// Room under the content for the group screen's bar.
+  final double bottomInset;
 
   @override
   Widget build(BuildContext context) {
@@ -96,6 +99,7 @@ class GroupMembersScreen extends StatelessWidget {
     }
 
     return MullPage(
+      bottomInset: bottomInset,
       glow: const GlowSpec(size: 420, top: -160, right: -150),
       onRefresh: store.pullNow,
       header: const DetailBar(),
@@ -141,7 +145,7 @@ class GroupMembersScreen extends StatelessWidget {
                 children: [
                   MullIcon(MullGlyph.plus, size: 16, color: c.ink2, strokeWidth: 1.8),
                   const SizedBox(width: 12),
-                  Text('Add someone not on Mull', style: ranade(15, color: c.ink2)),
+                  Flexible(child: Text('Add someone not on Mull', style: ranade(15, color: c.ink2))),
                 ],
               ),
             ),
