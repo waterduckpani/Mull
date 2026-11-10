@@ -225,7 +225,7 @@ void main() {
       await t.pumpWidget(MullApp(store: store));
       await t.pump();
       MaterialApp app() => t.widget<MaterialApp>(find.byType(MaterialApp));
-      expect(app().themeMode, ThemeMode.dark);
+      expect(app().themeMode, ThemeMode.system, reason: 'the phone decides until you pick');
       final first = app();
 
       store.addGroup('Flat', ['Dev']);

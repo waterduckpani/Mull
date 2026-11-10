@@ -117,7 +117,9 @@ class _Tab extends StatelessWidget {
           child: AnimatedContainer(
             duration: duration,
             curve: Curves.easeOutCubic,
-            width: 58,
+            // Wide enough for "Recurring" with room either side; at 58 its
+            // name nearly touched the pill's edges.
+            width: 68,
             height: 50,
             decoration: BoxDecoration(
               color: open ? c.quiet : c.quiet.withValues(alpha: 0),
@@ -146,7 +148,7 @@ class _Tab extends StatelessWidget {
                             ),
                           ),
                         )
-                      : const SizedBox(width: 58),
+                      : const SizedBox(width: 68),
                 ),
               ],
             ),

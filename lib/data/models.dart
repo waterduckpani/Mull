@@ -940,9 +940,9 @@ class Group {
 class Profile {
   Profile({
     this.name = '',
-    // Dark is the primary theme: every screen in the design is dark, and the
-    // paper theme is an option rather than half of a pair.
-    this.theme = ThemeMode.dark,
+    // The phone's own setting until you pick one: a light-mode phone opening
+    // a black app read as a mistake.
+    this.theme = ThemeMode.system,
     this.onboarded = false,
     this.upiId,
     this.phone,
@@ -977,6 +977,8 @@ class Profile {
   Map<String, dynamic> toJson() => {
     'name': name,
     'theme': theme.name,
+    // Marks the theme as picked rather than defaulted; see [Profile.fromJson].
+    'themeV': 2,
     'onboarded': onboarded,
     'upiId': upiId,
     'phone': phone,
@@ -986,7 +988,13 @@ class Profile {
 
   factory Profile.fromJson(Map<String, dynamic> j) => Profile(
     name: j['name'] as String? ?? '',
-    theme: ThemeMode.values.byName(j['theme'] as String? ?? 'dark'),
+    // Saved before 1.1, "dark" was the default rather than a choice, and
+    // there is no telling the two apart, so it follows the system once. Light
+    // was always picked on purpose.
+    theme: switch ((j['theme'] as String?, j['themeV'])) {
+      ('dark', null) || (null, _) => ThemeMode.system,
+      (final name?, _) => ThemeMode.values.byName(name),
+    },
     onboarded: j['onboarded'] as bool? ?? false,
     upiId: j['upiId'] as String?,
     phone: j['phone'] as String?,

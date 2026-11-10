@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 
 import '../../data/store.dart';
 import '../../ui/page.dart';
+import '../../ui/sheet.dart';
 import '../../ui/tokens.dart';
 import 'group_bar.dart';
 import 'group_sheets.dart';
@@ -29,6 +30,19 @@ class GroupScreen extends StatefulWidget {
 
 class _GroupScreenState extends State<GroupScreen> {
   late GroupTab _tab = widget.initialTab;
+
+  @override
+  void initState() {
+    super.initState();
+    // Notices sit above the bar while it is on screen, not on top of the +.
+    Toast.raise = GroupBar.height + 12;
+  }
+
+  @override
+  void dispose() {
+    Toast.raise = 0;
+    super.dispose();
+  }
 
   void _select(GroupTab tab) => setState(() => _tab = tab);
 

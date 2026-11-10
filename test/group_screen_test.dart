@@ -6,6 +6,7 @@ import 'package:mull/data/store.dart';
 import 'package:mull/screens/groups/group_bar.dart';
 import 'package:mull/screens/groups/group_screen.dart';
 import 'package:mull/screens/groups/recurring_screen.dart';
+import 'package:mull/ui/sheet.dart';
 import 'package:mull/ui/tokens.dart';
 
 /// One group, four tabs, one bar that never moves.
@@ -174,5 +175,14 @@ void main() {
     await tapTab(t, 'People');
     expect(find.text('Delete this ledger'), findsOneWidget);
     expect(find.text('Add people'), findsNothing);
+  });
+
+  screenTest('a notice sits above the bar, not on the +', (t) async {
+    final store = sample();
+    await open(t, store, named(store, 'Flat'));
+    Toast.show(t.element(find.byType(GroupBar)), 'Saved');
+    await t.pumpAndSettle();
+    expect(t.getRect(find.text('Saved')).bottom, lessThan(t.getRect(find.byType(GroupBar)).top));
+    Toast.hide();
   });
 }

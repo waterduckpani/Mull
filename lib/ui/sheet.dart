@@ -339,6 +339,11 @@ class Toast {
   static OverlayEntry? _entry;
   static Timer? _timer;
 
+  /// How far above its usual spot a notice sits, so it clears something
+  /// pinned to the bottom of the screen: the group screen's bar sets this
+  /// while it is showing, and a notice no longer lands on top of the +.
+  static double raise = 0;
+
   static void show(BuildContext context, String message, {String? action, VoidCallback? onAction}) =>
       showOn(Overlay.of(context, rootOverlay: true), message, action: action, onAction: onAction);
 
@@ -577,7 +582,7 @@ class _ToastViewState extends State<_ToastView> with SingleTickerProviderStateMi
     return Positioned(
       left: 22,
       right: 22,
-      bottom: (bottomSafe > 0 ? 28 : 20) + 12,
+      bottom: (bottomSafe > 0 ? 28 : 20) + 12 + Toast.raise,
       child: FadeTransition(
         opacity: curve,
         child: SlideTransition(
@@ -593,9 +598,12 @@ class _ToastViewState extends State<_ToastView> with SingleTickerProviderStateMi
                     BoxShadow(color: c.shadowCard, blurRadius: 40, offset: const Offset(0, 16)),
                   ],
                 ),
+                // Grows to three lines rather than cutting a sentence off
+                // with "…": a notice that explains why nothing happened is
+                // useless with its reason missing.
                 child: Container(
-                  height: 56,
-                  padding: const EdgeInsets.only(left: 22, right: 8),
+                  constraints: const BoxConstraints(minHeight: 56),
+                  padding: const EdgeInsets.fromLTRB(22, 10, 8, 10),
                   decoration: BoxDecoration(
                     color: c.pill,
                     borderRadius: BorderRadius.circular(28),
@@ -605,7 +613,7 @@ class _ToastViewState extends State<_ToastView> with SingleTickerProviderStateMi
                       Expanded(
                         child: Text(
                           widget.message,
-                          maxLines: 1,
+                          maxLines: 3,
                           overflow: TextOverflow.ellipsis,
                           style: ranade(14, color: c.pillInk),
                         ),
