@@ -1511,52 +1511,24 @@ Future<bool> confirmDeleteGroup(BuildContext context, Group group) async {
 
 // ----------------------------------------------------------------- settings
 
-/// A plain label with a value and a chevron, for a row that leaves the sheet.
-class _SettingsRow extends StatelessWidget {
-  const _SettingsRow({required this.label, required this.value, required this.onTap});
+/// The group's name and icon, opened by tapping either at the top of its
+/// Overview. Only an admin gets here: the server refuses anyone else's rename.
+///
+/// This used to be a settings sheet behind a ⋯ that also held People, a
+/// recurring cost and Delete, each of which already had a home on the screen.
+Future<void> showEditGroup(BuildContext context, Group group) =>
+    showMullSheet(context, fitContent: true, builder: (_) => _EditGroupSheet(group: group));
 
-  final String label;
-  final String value;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final c = context.c;
-    return Pressable(
-      onTap: onTap,
-      scale: .985,
-      child: Container(
-        padding: const EdgeInsets.fromLTRB(20, 18, 18, 18),
-        decoration: surfaceOf(c, Lift.flat, radius: BorderRadius.circular(22)),
-        child: Row(
-          children: [
-            Expanded(child: Text(label, style: MullType.cardTitle(c.ink, size: 16))),
-            Text(value, style: MullType.caption(c.ink3)),
-            const SizedBox(width: 10),
-            MullIcon(MullGlyph.chevronRight, size: 14, color: c.ink3, strokeWidth: 1.8),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-/// Resolves to 'deleted' when the group was removed, 'people' when the caller
-/// should open the members screen, or 'add-recurring' when it should open the
-/// schedule editor — each once this sheet is out of the way.
-Future<String?> showGroupSettings(BuildContext context, Group group) =>
-    showMullSheet<String>(context, height: 700, builder: (_) => _GroupSettingsSheet(group: group));
-
-class _GroupSettingsSheet extends StatefulWidget {
-  const _GroupSettingsSheet({required this.group});
+class _EditGroupSheet extends StatefulWidget {
+  const _EditGroupSheet({required this.group});
 
   final Group group;
 
   @override
-  State<_GroupSettingsSheet> createState() => _GroupSettingsSheetState();
+  State<_EditGroupSheet> createState() => _EditGroupSheetState();
 }
 
-class _GroupSettingsSheetState extends State<_GroupSettingsSheet> {
+class _EditGroupSheetState extends State<_EditGroupSheet> {
   late final _name = TextEditingController(text: widget.group.name);
 
   @override
@@ -1570,129 +1542,41 @@ class _GroupSettingsSheetState extends State<_GroupSettingsSheet> {
     context.readStore.updateGroup(widget.group);
   }
 
-  Future<void> _delete() async {
-    final nav = Navigator.of(context);
-    if (await confirmDeleteGroup(context, widget.group)) nav.pop('deleted');
-  }
-
-  Future<void> _leave() async {
-    final nav = Navigator.of(context);
-    // The group screen behind treats this the same as a delete: the group is
-    // gone from this phone either way.
-    if (await confirmLeaveGroup(context, widget.group)) nav.pop('deleted');
-  }
-
   @override
   Widget build(BuildContext context) {
-    final c = context.c;
     final group = widget.group;
-    final admin = group.youAreAdmin;
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        SheetHeader(group.isDirect ? 'This ledger' : 'Group'),
-        Expanded(
-          child: SingleChildScrollView(
-            physics: const BouncingScrollPhysics(),
-            padding: const EdgeInsets.fromLTRB(30, 12, 30, 16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
+    return Padding(
+      padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(context).bottom),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const SheetHeader('Group'),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(30, 12, 30, 34),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                if (!group.isDirect) ...[
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Padding(
-                        padding: const EdgeInsets.only(top: 2, right: 16),
-                        child: IconWell(
-                          iconKey: group.icon,
-                          size: 44,
-                          glyphSize: 21,
-                          onTap: admin
-                              ? () async {
-                                  await pickGroupIcon(context, group);
-                                  if (mounted) setState(() {});
-                                }
-                              : null,
-                        ),
-                      ),
-                      Expanded(
-                        child: BigField(
-                          controller: _name,
-                          hint: 'Name',
-                          // Typing into a field that silently refuses to save
-                          // is worse than not offering it, and the server
-                          // refuses a rename from anyone who is not an admin.
-                          onChanged: admin ? (_) => _apply() : null,
-                          help: admin
-                              ? null
-                              : Text(
-                                  'Only an admin can rename this group or change its icon.',
-                                  style: ranade(12, height: 1.5, color: c.ink3),
-                                ),
-                        ),
-                      ),
-                    ],
+                Padding(
+                  padding: const EdgeInsets.only(top: 2, right: 16),
+                  child: IconWell(
+                    iconKey: group.icon,
+                    size: 44,
+                    glyphSize: 21,
+                    onTap: () async {
+                      await pickGroupIcon(context, group);
+                      if (mounted) setState(() {});
+                    },
                   ),
-                  const SizedBox(height: 28),
-                ],
-                // People have a screen of their own now. This used to be the
-                // only place membership lived, which meant a row of chips was
-                // carrying roles, balances and removal all at once.
-                _SettingsRow(
-                  label: group.isDirect ? 'The two of you' : 'People',
-                  value: [
-                    '${group.seated.length}',
-                    if (!group.isDirect && admin) 'you run it',
-                  ].join(' · '),
-                  onTap: () => Navigator.of(context).pop('people'),
                 ),
-                const SizedBox(height: 26),
-                Eyebrow('Repeating · ${group.recurring.length}', size: 10.5, tracking: .18),
-                const SizedBox(height: 12),
-                // Not a second list of schedules. Recurring is a screen off the
-                // group now, and two ways to see the same thing in two shapes
-                // is how an app starts disagreeing with itself.
-                Text(
-                  group.recurring.isEmpty
-                      ? 'Rent, wifi, the house help. Set one up from Recurring on '
-                            'the group screen and Mull asks when it comes round.'
-                      : 'Open Recurring on the group screen to change what they '
-                            'cost, who pays and when they land.',
-                  style: MullType.caption(c.ink3),
-                ),
-                const SizedBox(height: 12),
-                SecondaryButton(
-                  'Add a recurring cost',
-                  // Handed back to the group screen rather than opened here:
-                  // this sheet's context is gone the moment it pops, and the
-                  // editor has to outlive it.
-                  onTap: () => Navigator.of(context).pop('add-recurring'),
+                Expanded(
+                  child: BigField(controller: _name, hint: 'Name', onChanged: (_) => _apply()),
                 ),
               ],
             ),
           ),
-        ),
-        Padding(
-          padding: const EdgeInsets.fromLTRB(20, 8, 20, 30),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              // An admin deletes; everyone else leaves. A delete button that
-              // is greyed out for most people is a door with no handle.
-              if (admin)
-                SecondaryButton(
-                  group.isDirect ? 'Delete this ledger' : 'Delete group',
-                  onTap: _delete,
-                )
-              else
-                SecondaryButton('Leave group', onTap: _leave),
-            ],
-          ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 }

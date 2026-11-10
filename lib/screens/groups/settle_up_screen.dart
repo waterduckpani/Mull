@@ -1,13 +1,12 @@
 import 'package:flutter/material.dart';
 
 import '../../core/money.dart';
-import '../../core/split.dart';
-import '../../data/models.dart';
 import '../../data/store.dart';
 import '../../ui/page.dart';
 import '../../ui/tokens.dart';
 import '../../ui/widgets.dart';
 import 'group_sheets.dart';
+import 'settle_up_section.dart';
 
 /// What you owe, and what you are owed, in one group — and nothing else.
 ///
@@ -76,7 +75,7 @@ class SettleUpScreen extends StatelessWidget {
             padding: const EdgeInsets.symmetric(horizontal: Gutter.card),
             children: [
               for (final t in transfers)
-                _TransferCard(
+                TransferCard(
                   key: ValueKey('${t.from}-${t.to}'),
                   group: group,
                   transfer: t,
@@ -101,7 +100,7 @@ class SettleUpScreen extends StatelessWidget {
             padding: const EdgeInsets.symmetric(horizontal: Gutter.card),
             children: [
               for (final t in books)
-                _TransferCard(
+                TransferCard(
                   key: ValueKey('${t.from}-${t.to}'),
                   group: group,
                   transfer: t,
@@ -111,120 +110,6 @@ class SettleUpScreen extends StatelessWidget {
           ),
         ],
       ],
-    );
-  }
-}
-
-class _TransferCard extends StatelessWidget {
-  const _TransferCard({
-    super.key,
-    required this.group,
-    required this.transfer,
-    required this.lift,
-  });
-
-  final Group group;
-  final Transfer transfer;
-  final Lift lift;
-
-  @override
-  Widget build(BuildContext context) {
-    final c = context.c;
-    final store = context.store;
-    final from = group.memberById(transfer.from);
-    final to = group.memberById(transfer.to);
-    if (from == null || to == null) return const SizedBox.shrink();
-
-    final youPay = from.isYou;
-    final forThem = !youPay && !to.isYou;
-    final other = youPay ? to : from;
-    final name = store.shortName(other);
-
-    // What has already been said to have gone, and what that leaves. A claim
-    // does not move the balance until it is confirmed, so without this the
-    // card kept offering the whole amount again — pay twice, and send them a
-    // second "says they sent you" for the same money.
-    final claimed = group.claimedBetween(transfer.from, transfer.to);
-    final left = (transfer.amount - claimed).clamp(0, transfer.amount);
-    final claim = group.settlements
-        .where(
-          (s) =>
-              s.status == SettlementStatus.pending &&
-              s.fromId == transfer.from &&
-              s.toId == transfer.to,
-        )
-        .firstOrNull;
-
-    final title = forThem
-        ? '${store.shortName(from)} pays ${store.shortName(to)}'
-        : youPay
-        ? 'You pay $name'
-        : '$name pays you';
-    final shown = claimed > 0 && left > 0 ? left : transfer.amount;
-
-    final detail = switch (null) {
-      _ when forThem => 'Neither is on Mull · mark it once they have settled',
-      _ when claim != null && !youPay && left == 0 => 'They said they sent it · check and confirm',
-      _ when claim != null && !youPay =>
-        'They said they sent ${inr(claimed)} · check and confirm',
-      _ when claim != null && left == 0 => 'Sent · waiting on $name to confirm',
-      _ when claim != null => '${inr(claimed)} sent, waiting on $name · ${inr(left)} still to pay',
-      _ when youPay && to.upiId != null => 'Pay over UPI, then say it went through',
-      _ when youPay => 'No UPI ID on their seat yet · settle in person, then mark it',
-      _ when !from.isLinked => 'Not on Mull · settle in person, then mark it',
-      _ => 'Nudge them, or mark it once it lands',
-    };
-
-    void open() {
-      switch (claim) {
-        case _ when forThem:
-          showSettleUp(context, group, transfer);
-        case final pending? when !youPay:
-          showClaimCheck(context, group, pending);
-        case final pending? when left == 0:
-          showOwnClaim(context, group, pending);
-        default:
-          showSettleUp(
-            context,
-            group,
-            Transfer(from: transfer.from, to: transfer.to, amount: youPay ? left : transfer.amount),
-          );
-      }
-    }
-
-    return Pressable(
-      onTap: open,
-      scale: .985,
-      semanticLabel: '$title ${inr(shown)}. $detail',
-      child: ExcludeSemantics(
-        child: Container(
-          padding: const EdgeInsets.fromLTRB(24, 20, 24, 22),
-          decoration: surfaceOf(c, lift, radius: BorderRadius.circular(28)),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.baseline,
-                textBaseline: TextBaseline.alphabetic,
-                children: [
-                  Expanded(
-                    child: Text(
-                      title,
-                      style: MullType.cardTitle(c.ink, size: 18),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Text(inr(shown), style: MullType.cardAmount(c.ink, size: 22)),
-                ],
-              ),
-              const SizedBox(height: 8),
-              Text(detail, style: MullType.body(c.ink3)),
-            ],
-          ),
-        ),
-      ),
     );
   }
 }

@@ -8,7 +8,7 @@ import '../screens/notices_sheet.dart';
 import '../screens/profile_sheet.dart';
 import 'tokens.dart';
 import 'widgets.dart';
-import '../screens/groups/group_detail_screen.dart';
+import '../screens/groups/group_screen.dart';
 
 /// Layout constants shared by every page.
 ///
@@ -192,7 +192,7 @@ class _MullPageState extends State<MullPage> {
                           context,
                           onOpenLedger: (id) => Navigator.of(context).push(
                             CupertinoPageRoute(
-                              builder: (_) => GroupDetailScreen(groupId: id),
+                              builder: (_) => GroupScreen(groupId: id),
                             ),
                           ),
                         ),

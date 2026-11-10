@@ -14,7 +14,7 @@ import '../ui/tokens.dart';
 import '../ui/widgets.dart';
 import 'groups/create_group_flow.dart';
 import 'groups/expense_sheet.dart';
-import 'groups/group_detail_screen.dart';
+import 'groups/group_screen.dart';
 import 'groups/group_sheets.dart';
 import 'groups/icon_picker.dart';
 import 'groups/recurring_sheets.dart';
@@ -47,7 +47,7 @@ class HomeScreen extends StatelessWidget {
     final empty = store.groups.isEmpty;
 
     void open(Group g) => Navigator.of(context).push(
-      CupertinoPageRoute(builder: (_) => GroupDetailScreen(groupId: g.id)),
+      CupertinoPageRoute(builder: (_) => GroupScreen(groupId: g.id)),
     );
 
     Future<void> start({String? name}) async {
@@ -288,7 +288,7 @@ Future<void> _openWhoOwesWho(BuildContext context) async {
   final group = store.groupById(groupId);
   if (group == null) return;
   await navigator.push(
-    CupertinoPageRoute(builder: (_) => GroupDetailScreen(groupId: group.id)),
+    CupertinoPageRoute(builder: (_) => GroupScreen(groupId: group.id)),
   );
 }
 

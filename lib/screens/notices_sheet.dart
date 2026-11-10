@@ -20,7 +20,7 @@ import '../ui/page.dart';
 import '../ui/sheet.dart';
 import '../ui/tokens.dart';
 import '../ui/widgets.dart';
-import 'groups/group_detail_screen.dart';
+import 'groups/group_screen.dart';
 
 /// [into] is the navigator a tapped notice should open its group on.
 ///
@@ -46,7 +46,7 @@ Future<void> showNoticesSheet(BuildContext context, {NavigatorState? into}) asyn
   if (groupId == null || !context.mounted) return;
   if (context.readStore.groupById(groupId) == null) return;
   await (into ?? Navigator.of(context)).push(
-    CupertinoPageRoute(builder: (_) => GroupDetailScreen(groupId: groupId)),
+    CupertinoPageRoute(builder: (_) => GroupScreen(groupId: groupId)),
   );
 }
 

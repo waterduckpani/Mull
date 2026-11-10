@@ -5,10 +5,10 @@ import '../../data/store.dart';
 import '../../ui/page.dart';
 import '../../ui/tokens.dart';
 import 'group_bar.dart';
-import 'group_detail_screen.dart';
 import 'group_sheets.dart';
 import 'ledger_screen.dart';
 import 'members_screen.dart';
+import 'overview_tab.dart';
 import 'recurring_screen.dart';
 
 /// A group: four tabs under one bar.
@@ -57,7 +57,7 @@ class _GroupScreenState extends State<GroupScreen> {
             index: _tab.index,
             sizing: StackFit.expand,
             children: [
-              GroupDetailScreen(groupId: group.id, bottomInset: GroupBar.height),
+              OverviewTab(groupId: group.id, onSelectTab: _select, bottomInset: GroupBar.height),
               LedgerScreen(groupId: group.id, bottomInset: GroupBar.height),
               RecurringScreen(groupId: group.id, bottomInset: GroupBar.height),
               GroupMembersScreen(groupId: group.id, bottomInset: GroupBar.height),
