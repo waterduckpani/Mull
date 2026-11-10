@@ -32,43 +32,6 @@ void main() {
     await t.pump(const Duration(milliseconds: 600));
   }
 
-  MullStore withSample() => MullStore.memory()..loadSample();
-
-  testWidgets('the sample data draws a people list with both directions', skip: true, // moves to the People tab, Task 5
-      (t) async {
-    final store = withSample();
-    await pumpHome(t, store);
-
-    // The list builds lazily, so the People section has to be scrolled to
-    // before a finder can see it at all.
-    await t.drag(find.byType(Scrollable).last, const Offset(0, -700));
-    await t.pump(const Duration(milliseconds: 400));
-
-    expect(find.text('PEOPLE'), findsOneWidget);
-    // Every person Mull knows about has a row saying which way it points.
-    expect(find.textContaining(RegExp('owes you|you owe|square')), findsWidgets);
-  });
-
-  testWidgets('somebody you owe is on the screen, with an amount', skip: true, // moves to the People tab, Task 5
-      (t) async {
-    final store = MullStore.memory();
-    store.completeOnboarding(name: 'Bharat');
-    final dinner = store.addGroup('Dinner', ['Dev']);
-    final me = dinner.you!.id;
-    final dev = dinner.members.firstWhere((m) => !m.isYou).id;
-    store.addExpense(
-      dinner,
-      description: 'Dinner',
-      amount: 900,
-      payerId: dev,
-      shares: {me: 450, dev: 450},
-    );
-
-    await pumpHome(t, store);
-    expect(store.youOweThem.single.magnitude, 450);
-    expect(find.text('you owe'), findsWidgets);
-    expect(find.text('₹450'), findsWidgets);
-  });
 
   testWidgets('both halves are named when money runs both ways', (t) async {
     final store = MullStore.memory();

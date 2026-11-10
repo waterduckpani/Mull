@@ -146,7 +146,7 @@ class _PersonSheet extends StatelessWidget {
                 if (standing.youOwe) AskForBills(seats: standing.seats, name: name),
                 PillButton(
                   standing.theyOweYou ? 'Record what $name paid' : 'Pay $name',
-                  onTap: () => _settle(context, standing),
+                  onTap: () => settleWithPerson(context, standing),
                 ),
                 if (standing.theyOweYou) ...[
                   const SizedBox(height: 8),
@@ -297,7 +297,9 @@ class _RemindButton extends StatelessWidget {
 /// between recording what happened and recording what the app expected. "I'll
 /// send you 500 of the 1,800 now" is the most ordinary sentence in splitting
 /// money and Mull had no way to write it down.
-Future<void> _settle(BuildContext context, Standing standing) => showMullSheet(
+/// Paying one person what you owe them, across every ledger the two of you
+/// share.
+Future<void> settleWithPerson(BuildContext context, Standing standing) => showMullSheet(
   context,
   height: 520,
   builder: (_) => _SettleAcrossSheet(personKey: standing.member.id),

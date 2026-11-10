@@ -84,7 +84,7 @@ class HomeTabPage extends StatelessWidget {
         for (final item in <Object>[...g.expenses, ...g.settlements]) (g, item),
     ]..sort((a, b) => newestFirst(ledgerMoment(a.$2), ledgerMoment(b.$2)));
 
-    final requests = _FriendRequestsCard(
+    final requests = FriendRequestsCard(
       onOpenLedger: (id) {
         final g = store.groupById(id);
         if (g != null) open(g);
@@ -492,16 +492,16 @@ class _WaitingClaimCard extends StatelessWidget {
 /// without it anyone who knew your address could hand you a debt. Which makes
 /// the request the first thing a new user needs to see, and it used to be a
 /// count inside the profile sheet.
-class _FriendRequestsCard extends StatefulWidget {
-  const _FriendRequestsCard({required this.onOpenLedger});
+class FriendRequestsCard extends StatefulWidget {
+  const FriendRequestsCard({required this.onOpenLedger});
 
   final void Function(String groupId) onOpenLedger;
 
   @override
-  State<_FriendRequestsCard> createState() => _FriendRequestsCardState();
+  State<FriendRequestsCard> createState() => _FriendRequestsCardState();
 }
 
-class _FriendRequestsCardState extends State<_FriendRequestsCard> with WidgetsBindingObserver {
+class _FriendRequestsCardState extends State<FriendRequestsCard> with WidgetsBindingObserver {
   List<Friend> _waiting = const [];
 
   @override
