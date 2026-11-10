@@ -922,7 +922,16 @@ class NameChip extends StatelessWidget {
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text(label, style: ranade(13, color: selected ? c.pillInk : c.ink2)),
+            // Flexible, so a long label at a large text size ends in an
+            // ellipsis instead of running out of the chip.
+            Flexible(
+              child: Text(
+                label,
+                style: ranade(13, color: selected ? c.pillInk : c.ink2),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
             if (detail != null) ...[
               const SizedBox(width: 7),
               Text(detail!, style: excon(12.5, color: selected ? c.pillInk : c.ink3)),

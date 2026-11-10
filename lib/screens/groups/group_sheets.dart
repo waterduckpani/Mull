@@ -47,12 +47,14 @@ Future<void> showAddExpense(BuildContext context, Group group, {Expense? existin
 /// needs the inset as padding, which is all this is.
 double _keyboardInset(BuildContext context) => MediaQuery.viewInsetsOf(context).bottom;
 
-/// Adding an expense, in three short steps: what it was and how much; who paid
-/// and how it splits; the bill and a note.
+/// Adding an expense, in two steps: what it was and how much, with the bill,
+/// the date and a note tucked in a row underneath; then who paid and who it
+/// was for.
 ///
-/// One long form put nine decisions on one screen. Split into steps, each is
-/// a glance: the defaults (you paid, today, split equally) are already
-/// filled in, so the middle step is usually one look and a tap. There is one
+/// It was three steps, and the third — the bill and a note — was a page of
+/// things almost nobody adds, between you and saving. Now the extras are one
+/// quiet row on the first step, and the defaults (you paid, today, split
+/// equally) mean the second is usually one look and a tap. There is one
 /// button, and it says Next until the last step, where it says Add it — two
 /// buttons side by side put "Add it" where Next belongs, and it got tapped by
 /// people who meant to go on.
@@ -74,11 +76,15 @@ class _ExpenseSheetState extends State<_ExpenseSheet> {
   late final _amount = AmountController(widget.existing?.amount);
   late final _note = TextEditingController(text: widget.existing?.note ?? '');
   final _amountFocus = FocusNode();
+  final _noteFocus = FocusNode();
+
+  /// Whether the note field is out. It stays out once there is a note.
+  bool _noteOpen = false;
 
   late final SplitModel _split;
   late DateTime _date;
 
-  static const _steps = ['What', 'Who paid', 'Bill & note'];
+  static const _steps = ['What', 'Who paid'];
   int _step = 0;
 
   /// The furthest step reached, which the labels at the top can go back to.
@@ -129,6 +135,7 @@ class _ExpenseSheetState extends State<_ExpenseSheet> {
     _amount.dispose();
     _note.dispose();
     _amountFocus.dispose();
+    _noteFocus.dispose();
     _split
       ..removeListener(_onSplitChanged)
       ..dispose();
@@ -148,11 +155,7 @@ class _ExpenseSheetState extends State<_ExpenseSheet> {
   bool _canJump(int step) => step <= _furthest && _canReach(step);
 
   /// Whether this step is finished enough for Next.
-  bool get _stepDone => switch (_step) {
-    0 => _basicsDone,
-    1 => _split.isValid,
-    _ => _valid,
-  };
+  bool get _stepDone => _step == 0 ? _basicsDone : _valid;
 
   void _go(int step) {
     if (step == _step || !_canReach(step)) return;
@@ -309,11 +312,7 @@ class _ExpenseSheetState extends State<_ExpenseSheet> {
                   padding: EdgeInsets.fromLTRB(30, 12, 30, 24 + _keyboardInset(context)),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: switch (_step) {
-                      0 => _whatStep(),
-                      1 => _whoStep(),
-                      _ => _billStep(),
-                    },
+                    children: _step == 0 ? _whatStep() : [SplitFields(model: _split)],
                   ),
                 ),
               ),
@@ -335,10 +334,82 @@ class _ExpenseSheetState extends State<_ExpenseSheet> {
     );
   }
 
-  // ------------------------------------------------- 1 of 3: what and how much
+  // ---------------------------------------- 1 of 2: what, how much, and extras
+
+  /// The bill on an expense being edited, unless it is being taken off.
+  String? get _kept => _dropBill ? null : widget.existing?.receipt;
+
+  /// Only the payer takes a bill off, as on the expense itself.
+  bool get _youPaid {
+    final existing = widget.existing;
+    return existing == null || existing.payerId == widget.group.you?.id;
+  }
+
+  void _openNote() {
+    setState(() => _noteOpen = true);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _noteFocus.requestFocus();
+    });
+  }
+
+  /// Camera, photos, or taking it off again.
+  Future<void> _billOptions() async {
+    final kept = _kept;
+    // A bill already on the expense is the payer's to take off, and is
+    // replaced from the expense itself rather than here.
+    if (kept != null && !_youPaid) return;
+    final choice = await showMullSheet<String>(
+      context,
+      fitContent: true,
+      builder: (sheet) => Padding(
+        padding: const EdgeInsets.fromLTRB(30, 26, 30, 22),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text('The bill', style: MullType.screenTitle(sheet.c.ink)),
+            const SizedBox(height: 8),
+            Text(
+              'The receipt, or a screenshot of the order. Everyone in the split can see it.',
+              style: ranade(12.5, height: 1.5, color: sheet.c.ink3),
+            ),
+            const SizedBox(height: 18),
+            CardRows(
+              children: [
+                if (kept == null) ...[
+                  SheetAction('Take a photo', onTap: () => Navigator.of(sheet).pop('camera')),
+                  SheetAction('From photos', onTap: () => Navigator.of(sheet).pop('gallery')),
+                ],
+                if (_bill != null || kept != null)
+                  SheetAction('Remove the bill', destructive: true, onTap: () => Navigator.of(sheet).pop('remove')),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+    if (!mounted) return;
+    switch (choice) {
+      case 'camera':
+        await _pickBill(ImageSource.camera);
+      case 'gallery':
+        await _pickBill(ImageSource.gallery);
+      case 'remove':
+        setState(() {
+          _bill = null;
+          if (_kept != null) _dropBill = true;
+        });
+    }
+  }
 
   List<Widget> _whatStep() {
     final c = context.c;
+    final store = context.store;
+    final adding = widget.existing == null;
+    final kept = _kept;
+    final hasBill = _bill != null || kept != null;
+    final showNote = _noteOpen || _note.text.trim().isNotEmpty;
+
     return [
       BigField(
         controller: _description,
@@ -359,123 +430,72 @@ class _ExpenseSheetState extends State<_ExpenseSheet> {
         // a number they typed.
         help: _rounded == null ? null : Text('Rounded to ${inr(_rounded!)}. Mull keeps whole rupees.'),
       ),
-    ];
-  }
-
-  // ------------------------------------------ 2 of 3: when, who paid, the split
-
-  List<Widget> _whoStep() {
-    final c = context.c;
-    final store = context.store;
-    return [
-      _RowButton(label: 'When', value: _when(store), onTap: _pickDate),
-      const SizedBox(height: 26),
-      SplitFields(model: _split),
-      if (widget.existing == null) ...[
-        const SizedBox(height: 28),
-        CheckRow(
-          on: _repeats,
-          label: 'This happens again',
-          onTap: () => setState(() => _repeats = !_repeats),
-          help:
-              'Rent, wifi, the maid. Mull puts it on a schedule and asks when '
-              'it comes round. It never adds one behind your back unless you '
-              'tell it to.',
-        ),
-        if (_repeats) ...[
-          const SizedBox(height: 16),
-          _FrequencyPicker(
-            value: _frequency,
-            onChanged: (f) => setState(() => _frequency = f),
-          ),
-          const SizedBox(height: 10),
-          Text(
-            'Next one ${relativeDay(_frequency.next(_date), store.now())}.',
-            style: ranade(11.5, color: c.ink3),
-          ),
+      const SizedBox(height: 24),
+      // Everything else an expense can have, none of it needed. One quiet row
+      // instead of a step of its own; a chip fills in once it is used.
+      Wrap(
+        spacing: 8,
+        runSpacing: 8,
+        children: [
+          NameChip(hasBill ? 'Bill added' : 'Add a bill', selected: hasBill, onTap: _billOptions),
+          NameChip(_when(store), selected: daysBetween(_date, store.now()) != 0, onTap: _pickDate),
+          NameChip(showNote ? 'Note' : 'Add a note', selected: showNote, onTap: _openNote),
+          if (adding)
+            NameChip(
+              _repeats ? _frequency.label : 'Repeats',
+              selected: _repeats,
+              onTap: () => setState(() => _repeats = !_repeats),
+            ),
         ],
-      ],
-    ];
-  }
-
-  // ------------------------------------------------ 3 of 3: the bill and a note
-
-  List<Widget> _billStep() {
-    final c = context.c;
-    final existing = widget.existing;
-    final youPaid = existing == null || existing.payerId == widget.group.you?.id;
-    final kept = _dropBill ? null : existing?.receipt;
-
-    return [
-      const Eyebrow('Bill', size: 10.5, tracking: .18, padding: EdgeInsets.only(bottom: 12)),
+      ),
       if (_bill case final bytes?) ...[
-        ClipRRect(
-          borderRadius: BorderRadius.circular(20),
-          child: Container(
-            height: 220,
-            color: c.quiet,
-            child: Image.memory(bytes, fit: BoxFit.cover, width: double.infinity),
-          ),
-        ),
+        const SizedBox(height: 16),
         Align(
           alignment: Alignment.centerLeft,
           child: Pressable(
-            onTap: () => setState(() => _bill = null),
-            child: Padding(
-              padding: const EdgeInsets.only(top: 12),
-              child: Text('Remove the photo', style: ranade(13, color: c.ink3)),
+            onTap: _billOptions,
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(14),
+              child: Image.memory(bytes, width: 88, height: 88, fit: BoxFit.cover),
             ),
           ),
         ),
-      ] else if (kept != null)
+      ] else if (kept != null) ...[
+        const SizedBox(height: 16),
         ReceiptThumb(
           receiptKey: kept,
-          // Only the payer takes a bill off, as on the expense itself.
-          onRemove: youPaid ? () => setState(() => _dropBill = true) : null,
-        )
-      else ...[
-        Row(
-          children: [
-            Expanded(
-              child: InlineButton(
-                'Take a photo',
-                height: 48,
-                expand: true,
-                filled: false,
-                onTap: () => _pickBill(ImageSource.camera),
-              ),
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: InlineButton(
-                'From photos',
-                height: 48,
-                expand: true,
-                filled: false,
-                onTap: () => _pickBill(ImageSource.gallery),
-              ),
-            ),
-          ],
+          onRemove: _youPaid ? () => setState(() => _dropBill = true) : null,
+        ),
+      ],
+      if (showNote) ...[
+        const SizedBox(height: 18),
+        BigField(
+          controller: _note,
+          focusNode: _noteFocus,
+          size: 16,
+          multiline: true,
+          hint: 'Note',
+          capitalization: TextCapitalization.sentences,
+        ),
+      ],
+      if (_repeats) ...[
+        const SizedBox(height: 18),
+        _FrequencyPicker(
+          value: _frequency,
+          onChanged: (f) => setState(() => _frequency = f),
         ),
         const SizedBox(height: 10),
         Text(
-          'The receipt, or a screenshot of the order. Everyone in the split can see it.',
-          style: ranade(11.5, color: c.ink3),
+          'Next one ${relativeDay(_frequency.next(_date), store.now())}. Mull asks when it comes '
+          'round, and never adds one behind your back.',
+          style: ranade(11.5, height: 1.5, color: c.ink3),
         ),
       ],
-      const SizedBox(height: 30),
-      BigField(
-        controller: _note,
-        size: 16,
-        multiline: true,
-        hint: 'Note (optional)',
-        capitalization: TextCapitalization.sentences,
-      ),
     ];
   }
 }
 
-/// The sheet's title, where it is in the three steps, and the close button.
+/// The sheet's title, where it is in the steps, and the close button.
 /// A label goes back to a step already seen; when editing, to any of them.
 class _StepBar extends StatelessWidget {
   const _StepBar({
@@ -537,40 +557,6 @@ class _StepBar extends StatelessWidget {
           ),
         ),
       ],
-    );
-  }
-}
-
-/// A label with a tappable value on the right — "When · Today".
-class _RowButton extends StatelessWidget {
-  const _RowButton({required this.label, required this.value, required this.onTap});
-
-  final String label;
-  final String value;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final c = context.c;
-    return Pressable(
-      onTap: onTap,
-      scale: .99,
-      child: Container(
-        height: 54,
-        decoration: BoxDecoration(
-          border: Border(bottom: BorderSide(color: c.line)),
-        ),
-        child: Row(
-          children: [
-            Expanded(
-              child: Text(label, style: ranade(15, color: c.ink2)),
-            ),
-            Text(value, style: excon(16, color: c.ink)),
-            const SizedBox(width: 8),
-            MullIcon(MullGlyph.chevronRight, size: 15, color: c.ink3, strokeWidth: 1.7),
-          ],
-        ),
-      ),
     );
   }
 }

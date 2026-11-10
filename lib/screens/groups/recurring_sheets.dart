@@ -394,14 +394,14 @@ class _RecurringEditorState extends State<_RecurringEditor> {
     builder: (sheet) => Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        const SheetHeader('Who pays, and how it splits'),
+        const SheetHeader('Who pays, and who it is for'),
         Expanded(
           child: SingleChildScrollView(
             physics: const BouncingScrollPhysics(),
             padding: const EdgeInsets.fromLTRB(30, 14, 30, 20),
             child: ListenableBuilder(
               listenable: _split,
-              builder: (context, _) => SplitFields(model: _split, payerLabel: 'Who pays it'),
+              builder: (context, _) => SplitFields(model: _split, payerQuestion: 'Who pays it?'),
             ),
           ),
         ),
@@ -442,7 +442,7 @@ class _RecurringEditorState extends State<_RecurringEditor> {
     final count = _split.included.length;
     return switch (_split.method) {
       SplitMethod.equal => 'Equally, $count ${count == 1 ? 'way' : 'ways'}',
-      SplitMethod.exact => 'Exact amounts',
+      SplitMethod.exact => 'Uneven',
       SplitMethod.shares => 'By shares',
       SplitMethod.percent => 'By percentage',
     };
@@ -527,7 +527,7 @@ class _RecurringEditorState extends State<_RecurringEditor> {
 
                 if (!_split.isValid && _amount.amount != null) ...[
                   const SizedBox(height: 14),
-                  Text(_split.status, style: MullType.caption(c.ink2)),
+                  Text(_split.problem ?? '', style: MullType.caption(c.ink2)),
                 ],
 
                 const SizedBox(height: 18),

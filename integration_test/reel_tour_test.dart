@@ -145,8 +145,6 @@ void main() {
     await shot(t, 'add-expense');
     await tapText(t, 'Next');
     await shot(t, 'add-expense-split');
-    await tapText(t, 'Next');
-    await shot(t, 'add-expense-bill');
     await tapText(t, 'Add it');
     await settle(t, 900);
     await shot(t, 'group-after-expense');

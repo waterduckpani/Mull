@@ -187,8 +187,9 @@ void main() {
     await t.pump(const Duration(milliseconds: 100));
     await tapText(t, 'Next');
     await shot(t, '08b-add-expense-split');
-    await tapText(t, 'Next');
-    await shot(t, '08c-add-expense-bill');
+    await tapText(t, 'The others owe all of it');
+    await shot(t, '08c-add-expense-owed-in-full');
+    await tapText(t, 'Split equally');
     await tapText(t, 'Add it');
     await settle(t, 900);
     expect(
