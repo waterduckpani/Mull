@@ -30,9 +30,9 @@ class _NeedsYouStackState extends State<NeedsYouStack> {
     if (cards.isEmpty) return const SizedBox.shrink();
 
     if (_open || cards.length == 1) {
+      // The cards bring their own side margins.
       return Stacked(
         gap: 8,
-        padding: const EdgeInsets.symmetric(horizontal: Gutter.card),
         children: [
           ...cards,
           if (cards.length > 1)
@@ -53,41 +53,38 @@ class _NeedsYouStackState extends State<NeedsYouStack> {
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: () => setState(() => _open = true),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: Gutter.card),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Stack(
-              clipBehavior: Clip.none,
-              children: [
-                // The cards behind, as the edge of a pile.
-                Positioned(
-                  left: 14,
-                  right: 14,
-                  bottom: -10,
-                  height: 40,
-                  child: DecoratedBox(
-                    decoration: surfaceOf(c, Lift.flat, radius: BorderRadius.circular(22)),
-                  ),
-                ),
-                cards.first,
-              ],
-            ),
-            const SizedBox(height: 18),
-            Semantics(
-              button: true,
-              label: 'Show $rest more',
-              child: ExcludeSemantics(
-                child: Text(
-                  rest == 1 ? '1 more' : '$rest more',
-                  textAlign: TextAlign.center,
-                  style: MullType.caption(c.ink3, size: 12.5),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Stack(
+            clipBehavior: Clip.none,
+            children: [
+              // The cards behind, as the edge of a pile.
+              Positioned(
+                left: Gutter.card + 14,
+                right: Gutter.card + 14,
+                bottom: -10,
+                height: 40,
+                child: DecoratedBox(
+                  decoration: surfaceOf(c, Lift.flat, radius: BorderRadius.circular(22)),
                 ),
               ),
+              cards.first,
+            ],
+          ),
+          const SizedBox(height: 18),
+          Semantics(
+            button: true,
+            label: 'Show $rest more',
+            child: ExcludeSemantics(
+              child: Text(
+                rest == 1 ? '1 more' : '$rest more',
+                textAlign: TextAlign.center,
+                style: MullType.caption(c.ink3, size: 12.5),
+              ),
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }

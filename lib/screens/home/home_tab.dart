@@ -160,7 +160,9 @@ class _RecentRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final c = context.c;
     final store = context.store;
-    String name(String id) => switch (group.memberById(id)) {
+    // "You paid Ananya", "Sahil paid you": you are only capitalised first.
+    String name(String id, {bool first = false}) => switch (group.memberById(id)) {
+      final m? when m.isYou => first ? 'You' : 'you',
       final m? => store.shortName(m),
       null => 'Someone',
     };
@@ -177,7 +179,9 @@ class _RecentRow extends StatelessWidget {
         () => showExpenseDetail(context, group, e),
       ),
       Settlement s => (
-        s.offset ? '${name(s.fromId)} and ${name(s.toId)} netted off' : '${name(s.fromId)} paid ${name(s.toId)}',
+        s.offset
+            ? '${name(s.fromId, first: true)} and ${name(s.toId)} netted off'
+            : '${name(s.fromId, first: true)} paid ${name(s.toId)}',
         group.title,
         s.amount,
         null,
@@ -331,7 +335,7 @@ class _NettedCard extends StatelessWidget {
     return Surface(
       lift: Lift.card,
       radius: 28,
-      margin: const EdgeInsets.fromLTRB(Gutter.card, 10, Gutter.card, 0),
+      margin: const EdgeInsets.symmetric(horizontal: Gutter.card),
       padding: const EdgeInsets.fromLTRB(22, 18, 16, 18),
       child: Row(
         children: [
@@ -386,7 +390,7 @@ class _BillAskedCard extends StatelessWidget {
     return Surface(
       lift: lift,
       radius: 28,
-      margin: const EdgeInsets.fromLTRB(Gutter.card, 10, Gutter.card, 0),
+      margin: const EdgeInsets.symmetric(horizontal: Gutter.card),
       padding: const EdgeInsets.fromLTRB(22, 18, 16, 18),
       child: Row(
         children: [
@@ -450,7 +454,7 @@ class _WaitingClaimCard extends StatelessWidget {
     return Surface(
       lift: lift,
       radius: 28,
-      margin: const EdgeInsets.fromLTRB(Gutter.card, 10, Gutter.card, 0),
+      margin: const EdgeInsets.symmetric(horizontal: Gutter.card),
       padding: const EdgeInsets.fromLTRB(22, 18, 16, 18),
       child: Row(
         children: [
@@ -849,7 +853,7 @@ class _ClaimCard extends StatelessWidget {
     return Surface(
       lift: lift,
       radius: 28,
-      margin: const EdgeInsets.fromLTRB(Gutter.card, 34, Gutter.card, 0),
+      margin: const EdgeInsets.symmetric(horizontal: Gutter.card),
       padding: const EdgeInsets.fromLTRB(22, 18, 16, 18),
       child: Row(
         children: [
@@ -900,7 +904,7 @@ class _DueCard extends StatelessWidget {
     return Surface(
       lift: lift,
       radius: 28,
-      margin: const EdgeInsets.fromLTRB(Gutter.card, 10, Gutter.card, 0),
+      margin: const EdgeInsets.symmetric(horizontal: Gutter.card),
       padding: const EdgeInsets.fromLTRB(22, 18, 16, 18),
       child: Row(
         children: [
