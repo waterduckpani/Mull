@@ -143,4 +143,18 @@ void main() {
     expect(find.text('Recurring'), findsNothing);
     expect(find.text('Add an expense'), findsNothing);
   });
+
+  testWidgets('the name sheet sits on the keyboard, not a keyboard above it', (t) async {
+    final store = sample();
+    await pumpOverview(t, store, named(store, 'Goa trip'));
+    await t.tap(find.text('Goa trip'));
+    await t.pumpAndSettle();
+    t.view.viewInsets = FakeViewPadding(bottom: 300 * t.view.devicePixelRatio);
+    addTearDown(t.view.resetViewInsets);
+    await t.pumpAndSettle();
+    final keyboardTop = 844.0 - 300;
+    final field = t.getRect(find.text('Name'));
+    expect(field.bottom, lessThan(keyboardTop));
+    expect(field.bottom, greaterThan(keyboardTop - 140), reason: 'lifted once, by the sheet, not again by its content');
+  });
 }

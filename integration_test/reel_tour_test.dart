@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
 import 'package:mull/data/store.dart';
 import 'package:mull/main.dart';
+import 'package:mull/screens/groups/group_bar.dart';
 import 'package:mull/ui/icons.dart';
 import 'package:mull/ui/sheet.dart';
 
@@ -49,6 +50,28 @@ void main() {
     }
   }
 
+  /// A tab in the group's bar, by its icon: only the open tab shows a name.
+  Future<void> tapTab(WidgetTester t, GroupTab tab) async {
+    await t.tap(
+      find.descendant(
+        of: find.byType(GroupBar),
+        matching: find.byWidgetPredicate((w) => w is MullIcon && w.glyph == tab.glyph),
+      ),
+    );
+    await settle(t, 700);
+  }
+
+  /// The + in the group's bar.
+  Future<void> tapAdd(WidgetTester t) async {
+    await t.tap(
+      find.descendant(
+        of: find.byType(GroupBar),
+        matching: find.byWidgetPredicate((w) => w is MullIcon && w.glyph == MullGlyph.plus),
+      ),
+    );
+    await settle(t);
+  }
+
   Future<void> back(WidgetTester t) async {
     await t.tap(glyph(MullGlyph.chevronLeft));
     await settle(t, 700);
@@ -85,15 +108,15 @@ void main() {
     await tapText(t, 'Goa trip');
     await shot(t, 'group-detail');
 
-    await tapText(t, 'Settle up');
+    await t.scrollUntilVisible(find.text('SETTLE UP'), 220, scrollable: find.byType(Scrollable).hitTestable().last);
+    await settle(t, 600);
     await shot(t, 'settle-up');
-    await back(t);
 
-    await tapText(t, 'Ledger');
+    await tapTab(t, GroupTab.ledger);
     await shot(t, 'ledger-expenses');
-    await back(t);
+    await tapTab(t, GroupTab.overview);
 
-    await tapText(t, 'Add an expense');
+    await tapAdd(t);
     await t.enterText(find.byType(TextField).at(0), 'Kayaking');
     await t.enterText(find.byType(TextField).at(1), '2600');
     FocusManager.instance.primaryFocus?.unfocus();

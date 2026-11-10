@@ -3,11 +3,12 @@ import 'package:integration_test/integration_test.dart';
 import 'package:mull/core/split.dart';
 import 'package:mull/data/store.dart';
 import 'package:mull/main.dart';
+import 'package:mull/screens/groups/group_bar.dart';
 import 'package:mull/ui/icons.dart';
 import 'package:mull/ui/sheet.dart';
 
 /// Screenshots of the 2026-09-27 changes: the net-off card, quick add, the
-/// group header, a greyed Settle up, and the expense view with its note and
+/// group header, a group with nothing to settle (no Settle up section), and the expense view with its note and
 /// bill. Run like the tour:
 ///
 ///   flutter drive --driver=test_driver/integration_test.dart \
@@ -39,6 +40,17 @@ void main() {
       await t.tapAt(const Offset(200, 24));
       await settle(t, 700);
     }
+  }
+
+  /// A tab in the group's bar, by its icon: only the open tab shows a name.
+  Future<void> tapTab(WidgetTester t, GroupTab tab) async {
+    await t.tap(
+      find.descendant(
+        of: find.byType(GroupBar),
+        matching: find.byWidgetPredicate((w) => w is MullIcon && w.glyph == tab.glyph),
+      ),
+    );
+    await settle(t, 700);
   }
 
   Future<void> back(WidgetTester t) async {
@@ -87,11 +99,10 @@ void main() {
 
     await tapText(t, 'Flat');
     await shot(t, 'c04-group-owing');
-    await tapText(t, '3 people');
-    await shot(t, 'c05-people-from-count');
-    await back(t);
+    await tapTab(t, GroupTab.people);
+    await shot(t, 'c05-people-tab');
 
-    await tapText(t, 'Ledger');
+    await tapTab(t, GroupTab.ledger);
     await shot(t, 'c06-ledger-note');
     await tapText(t, 'Dinner at Bombay Canteen');
     await shot(t, 'c07-expense-detail');

@@ -1545,38 +1545,36 @@ class _EditGroupSheetState extends State<_EditGroupSheet> {
   @override
   Widget build(BuildContext context) {
     final group = widget.group;
-    return Padding(
-      padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(context).bottom),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          const SheetHeader('Group'),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(30, 12, 30, 34),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Padding(
-                  padding: const EdgeInsets.only(top: 2, right: 16),
-                  child: IconWell(
-                    iconKey: group.icon,
-                    size: 44,
-                    glyphSize: 21,
-                    onTap: () async {
-                      await pickGroupIcon(context, group);
-                      if (mounted) setState(() {});
-                    },
-                  ),
+    // No keyboard padding here: the sheet itself sits on the keyboard.
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const SheetHeader('Group'),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(30, 12, 30, 34),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Padding(
+                padding: const EdgeInsets.only(top: 2, right: 16),
+                child: IconWell(
+                  iconKey: group.icon,
+                  size: 44,
+                  glyphSize: 21,
+                  onTap: () async {
+                    await pickGroupIcon(context, group);
+                    if (mounted) setState(() {});
+                  },
                 ),
-                Expanded(
-                  child: BigField(controller: _name, hint: 'Name', onChanged: (_) => _apply()),
-                ),
-              ],
-            ),
+              ),
+              Expanded(
+                child: BigField(controller: _name, hint: 'Name', onChanged: (_) => _apply()),
+              ),
+            ],
           ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 }

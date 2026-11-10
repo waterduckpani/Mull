@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
 import 'package:mull/data/store.dart';
 import 'package:mull/main.dart';
+import 'package:mull/screens/groups/group_bar.dart';
 import 'package:mull/screens/groups/icon_picker.dart';
 import 'package:mull/ui/icons.dart';
 import 'package:mull/ui/sheet.dart';
@@ -59,6 +60,28 @@ void main() {
     }
   }
 
+  /// A tab in the group's bar, by its icon: only the open tab shows a name.
+  Future<void> tapTab(WidgetTester t, GroupTab tab) async {
+    await t.tap(
+      find.descendant(
+        of: find.byType(GroupBar),
+        matching: find.byWidgetPredicate((w) => w is MullIcon && w.glyph == tab.glyph),
+      ),
+    );
+    await settle(t, 700);
+  }
+
+  /// The + in the group's bar.
+  Future<void> tapAdd(WidgetTester t) async {
+    await t.tap(
+      find.descendant(
+        of: find.byType(GroupBar),
+        matching: find.byWidgetPredicate((w) => w is MullIcon && w.glyph == MullGlyph.plus),
+      ),
+    );
+    await settle(t);
+  }
+
   Future<void> back(WidgetTester t) async {
     await t.tap(glyph(MullGlyph.chevronLeft));
     await settle(t, 700);
@@ -95,37 +118,43 @@ void main() {
     await shot(t, '04-group-detail');
 
     // ---- who is in it, and who runs it
-    await tapText(t, 'People');
+    await tapTab(t, GroupTab.people);
     await shot(t, '04b-members');
-    await back(t);
+    await tapTab(t, GroupTab.overview);
 
-    // ---- the mark the group carries, and finding one by name
+    // ---- the mark the group carries, and finding one by name: the badge
+    // opens the name-and-icon sheet, and its icon opens the picker
     await t.tap(find.byType(GroupBadge).hitTestable().first);
     await settle(t, 700);
+    await t.tap(find.byType(IconWell).hitTestable().last);
+    await settle(t, 700);
     await shot(t, '04c-icon-picker');
-    await t.enterText(find.byType(TextField).first, 'beach');
+    // The picker's search, on top: the first field is the group's name, in
+    // the sheet underneath.
+    await t.enterText(find.byType(TextField).last, 'beach');
     FocusManager.instance.primaryFocus?.unfocus();
     await settle(t);
     await shot(t, '04d-icon-search');
     await dismissSheet(t);
 
-    // ---- 4E, settling up, and the sheet a row opens
-    await tapText(t, 'Settle up');
+    // ---- 4E, settling up on the Overview, and the sheet a row opens
+    await t.scrollUntilVisible(find.text('SETTLE UP'), 220, scrollable: find.byType(Scrollable).hitTestable().last);
+    await settle(t, 600);
     await shot(t, '05-settle-up');
     await tapText(t, 'Kabir pays you');
     await shot(t, '05b-settle-sheet');
     await dismissSheet(t);
-    await back(t);
 
     // ---- 4F, the ledger, both tabs
-    await tapText(t, 'Ledger');
+    await tapTab(t, GroupTab.ledger);
     await shot(t, '06-ledger-expenses');
     await tapText(t, 'Settlements');
     await shot(t, '07-ledger-settlements');
-    await back(t);
+    await tapText(t, 'Expenses');
+    await tapTab(t, GroupTab.overview);
 
-    // ---- adding an expense
-    await tapText(t, 'Add an expense');
+    // ---- adding an expense, from the + in the bar
+    await tapAdd(t);
     await t.enterText(find.byType(TextField).at(0), 'Kayaking');
     await t.enterText(find.byType(TextField).at(1), '2600');
     FocusManager.instance.primaryFocus?.unfocus();
@@ -147,14 +176,13 @@ void main() {
 
     // ---- 4G, the flat, where the schedules live
     await tapText(t, 'Flat');
-    await tapText(t, 'Recurring');
+    await tapTab(t, GroupTab.recurring);
     await shot(t, '10-recurring');
 
     // ---- 4H, editing a standing cost
     await tapText(t, 'Flat maintenance');
     await shot(t, '11-recurring-editor');
     await dismissSheet(t);
-    await back(t);
     await back(t);
 
     // ---- where you stand with everyone, both directions
@@ -208,11 +236,11 @@ void main() {
     await t.tap(glyph(MullGlyph.close));
     await settle(t, 900);
 
-    // ---- the group's own settings
+    // ---- the group's name and icon, from its title
     await tapText(t, 'Goa trip');
-    await t.tap(find.bySemanticsLabel('Group settings').hitTestable().last);
+    await t.tap(find.text('Goa trip').hitTestable().first);
     await settle(t);
-    await shot(t, '14b-group-settings');
+    await shot(t, '14b-edit-group');
     await dismissSheet(t);
     await back(t);
 
