@@ -14,6 +14,8 @@ enum MullGlyph {
   more,
   plus,
   arrowUpRight,
+  overview,
+  ledger,
 }
 
 /// The design's hand-drawn 24×24 stroke icons, painted directly (no SVG dependency).
@@ -166,6 +168,21 @@ class _GlyphPainter extends CustomPainter {
       case MullGlyph.plus:
         canvas.drawLine(const Offset(12, 5), const Offset(12, 19), stroke);
         canvas.drawLine(const Offset(5, 12), const Offset(19, 12), stroke);
+      case MullGlyph.overview:
+        // A dial: where things stand.
+        canvas.drawCircle(const Offset(12, 12), 8.2, stroke);
+        canvas.drawPath(
+          Path()
+            ..moveTo(12, 7.6)
+            ..lineTo(12, 12)
+            ..lineTo(15, 14),
+          stroke,
+        );
+      case MullGlyph.ledger:
+        // Lines of a book, the last one short.
+        canvas.drawLine(const Offset(6, 7), const Offset(18, 7), stroke);
+        canvas.drawLine(const Offset(6, 12), const Offset(18, 12), stroke);
+        canvas.drawLine(const Offset(6, 17), const Offset(13.5, 17), stroke);
       case MullGlyph.arrowUpRight:
         canvas.drawLine(const Offset(7, 17), const Offset(17, 7), stroke);
         canvas.drawPath(
