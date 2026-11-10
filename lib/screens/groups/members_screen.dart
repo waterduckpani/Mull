@@ -48,54 +48,22 @@ class GroupMembersScreen extends StatelessWidget {
     final people = group.seated;
     final onMull = people.where((m) => m.isYou || m.isLinked).length;
 
-    Future<void> addFromFriends() async {
-      final picked = await showFriendPicker(
-        context,
-        alreadyIn: {
-          for (final m in group.members)
-            if (m.userId != null) m.userId!,
-        },
-      );
-      if (picked == null) return;
-      for (final friend in picked) {
-        final email = friend.email;
-        final waiting = email == null ? null : store.seatWaitingFor(group, name: friend.label, email: email);
-        if (waiting != null && context.mounted) {
-          final theirs = waiting.sure ? true : await _isTheSamePerson(context, group, waiting.seat, friend.label);
-          if (theirs == null) continue;
-          if (theirs) {
-            store.handSeatTo(group, waiting.seat, email!);
-            if (context.mounted) {
-              Toast.show(context, '${friend.label} gets ${store.shortName(waiting.seat)}\'s seat next time they open Mull');
-            }
-            continue;
-          }
-        }
-        store.addFriendAsMember(
-          group,
-          userId: friend.userId!,
-          name: friend.label,
-          email: friend.email,
-          upiId: friend.upiId,
-        );
-      }
-    }
-
     Future<void> addByHand() async {
       final name = await showAddSomeoneSheet(context);
       if (name == null || !context.mounted) return;
       store.addMember(group, name);
     }
 
+    // One pop: this tab lives inside the group's own screen, and that is
+    // what closes once the group is no longer on this phone.
     Future<void> leave() async {
       final nav = Navigator.of(context);
-      if (await confirmLeaveGroup(context, group)) {
-        // Two pops: this screen and the group behind it, both of which are
-        // now about a group this phone is no longer in.
-        nav
-          ..pop()
-          ..pop();
-      }
+      if (await confirmLeaveGroup(context, group)) nav.pop();
+    }
+
+    Future<void> delete() async {
+      final nav = Navigator.of(context);
+      if (await confirmDeleteGroup(context, group)) nav.pop();
     }
 
     return MullPage(
@@ -103,10 +71,11 @@ class GroupMembersScreen extends StatelessWidget {
       glow: const GlowSpec(size: 420, top: -160, right: -150),
       onRefresh: store.pullNow,
       header: const DetailBar(),
-      bottom: youAreAdmin && !group.isDirect
-          ? PillButton('Add people', glyph: MullGlyph.plus, onTap: addFromFriends)
-          : null,
       children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(Gutter.text, 22, Gutter.text, 0),
+          child: Text(group.title, style: MullType.caption(c.ink3, size: 12.5)),
+        ),
         PageTitle(
           group.isDirect ? 'Just you two' : 'People',
           subtitle: group.isDirect
@@ -116,7 +85,7 @@ class GroupMembersScreen extends StatelessWidget {
                   '$admins ${admins == 1 ? 'admin' : 'admins'}',
                   if (onMull < people.length) '${people.length - onMull} not on Mull',
                 ].join(' · '),
-          padding: const EdgeInsets.fromLTRB(Gutter.text, 22, Gutter.text, 0),
+          padding: const EdgeInsets.fromLTRB(Gutter.text, 2, Gutter.text, 0),
         ),
 
         const SizedBox(height: 30),
@@ -136,6 +105,14 @@ class GroupMembersScreen extends StatelessWidget {
         ),
 
         if (youAreAdmin && !group.isDirect) ...[
+          Padding(
+            padding: const EdgeInsets.fromLTRB(Gutter.card, 22, Gutter.card, 0),
+            child: SecondaryButton(
+              'Add people',
+              glyph: MullGlyph.plus,
+              onTap: () => addPeopleFromFriends(context, group),
+            ),
+          ),
           Padding(
             padding: const EdgeInsets.fromLTRB(Gutter.text, 22, Gutter.text, 0),
             child: Pressable(
@@ -167,17 +144,64 @@ class GroupMembersScreen extends StatelessWidget {
           ),
         ),
 
-        if (!group.isDirect) ...[
-          const SizedBox(height: 26),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: Gutter.card),
-            child: SecondaryButton('Leave this group', onTap: leave),
+        // At the foot, where nobody taps them on the way to something else.
+        // Everyone can leave a group; only an admin can delete one. A
+        // one-to-one ledger is deleted, not left.
+        const SizedBox(height: 26),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: Gutter.card),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              if (!group.isDirect || !youAreAdmin) SecondaryButton('Leave group', onTap: leave),
+              if (youAreAdmin) ...[
+                if (!group.isDirect) const SizedBox(height: 8),
+                SecondaryButton(group.isDirect ? 'Delete this ledger' : 'Delete group', onTap: delete),
+              ],
+            ],
           ),
-        ],
+        ),
       ],
     );
   }
 }
+
+/// Picks friends to add to [group], handing over a seat already kept for
+/// someone by name when it is the same person. The People tab and the
+/// Overview's "Who's in?" card both start here.
+Future<void> addPeopleFromFriends(BuildContext context, Group group) async {
+final store = context.readStore;
+    final picked = await showFriendPicker(
+      context,
+      alreadyIn: {
+        for (final m in group.members)
+          if (m.userId != null) m.userId!,
+      },
+    );
+    if (picked == null) return;
+    for (final friend in picked) {
+      final email = friend.email;
+      final waiting = email == null ? null : store.seatWaitingFor(group, name: friend.label, email: email);
+      if (waiting != null && context.mounted) {
+        final theirs = waiting.sure ? true : await _isTheSamePerson(context, group, waiting.seat, friend.label);
+        if (theirs == null) continue;
+        if (theirs) {
+          store.handSeatTo(group, waiting.seat, email!);
+          if (context.mounted) {
+            Toast.show(context, '${friend.label} gets ${store.shortName(waiting.seat)}\'s seat next time they open Mull');
+          }
+          continue;
+        }
+      }
+      store.addFriendAsMember(
+        group,
+        userId: friend.userId!,
+        name: friend.label,
+        email: friend.email,
+        upiId: friend.upiId,
+      );
+    }
+  }
 
 /// You first, then admins, then everyone else alphabetically. A list whose
 /// order changes every time somebody pays for something is a list nobody can

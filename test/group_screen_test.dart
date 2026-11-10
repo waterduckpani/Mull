@@ -132,4 +132,47 @@ void main() {
     expect(find.text('Add a recurring cost'), findsOneWidget);
     expect(find.text('Set one up'), findsNothing);
   });
+
+  screenTest('an admin can add, leave and delete from People', (t) async {
+    final store = sample();
+    await open(t, store, named(store, 'Goa trip'));
+    await tapTab(t, 'People');
+    for (final label in ['Add people', 'Add someone not on Mull', 'Leave group', 'Delete group']) {
+      expect(find.text(label), findsOneWidget, reason: label);
+    }
+  });
+
+  screenTest('a member sees Leave but not Delete', (t) async {
+    final store = sample();
+    final goa = named(store, 'Goa trip');
+    goa.you!.role = MemberRole.member;
+    await open(t, store, goa);
+    await tapTab(t, 'People');
+    expect(find.text('Leave group'), findsOneWidget);
+    expect(find.text('Delete group'), findsNothing);
+  });
+
+  screenTest('deleting from People closes the group', (t) async {
+    final store = sample();
+    await open(t, store, named(store, 'Goa trip'));
+    await tapTab(t, 'People');
+    final delete = find.text('Delete group');
+    await t.ensureVisible(delete);
+    await t.pumpAndSettle();
+    await t.tap(delete);
+    await t.pumpAndSettle();
+    await t.tap(find.text('Delete it'));
+    await t.pumpAndSettle();
+    expect(find.byType(GroupScreen), findsNothing);
+    await t.pump(const Duration(seconds: 6));
+  });
+
+  screenTest('a one-to-one ledger offers Delete this ledger', (t) async {
+    final store = sample();
+    final dev = store.directWith(name: 'Dev Rao');
+    await open(t, store, dev);
+    await tapTab(t, 'People');
+    expect(find.text('Delete this ledger'), findsOneWidget);
+    expect(find.text('Add people'), findsNothing);
+  });
 }
