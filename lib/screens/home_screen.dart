@@ -18,7 +18,6 @@ import 'groups/group_screen.dart';
 import 'groups/group_sheets.dart';
 import 'groups/icon_picker.dart';
 import 'groups/recurring_sheets.dart';
-import 'groups/settle_up_screen.dart';
 import 'friends_sheet.dart';
 import 'people_sheet.dart';
 
@@ -1162,7 +1161,8 @@ Future<void> showLedgerActions(BuildContext context, Group group) {
                     },
                     onTap: () => run(
                       () => Navigator.of(context).push(
-                        CupertinoPageRoute(builder: (_) => SettleUpScreen(groupId: group.id)),
+                        // Settling up is on the group's Overview now.
+                        CupertinoPageRoute(builder: (_) => GroupScreen(groupId: group.id)),
                       ),
                     ),
                   ),
