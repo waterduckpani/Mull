@@ -4,9 +4,11 @@ import 'package:integration_test/integration_test.dart';
 import 'package:mull/data/store.dart';
 import 'package:mull/main.dart';
 import 'package:mull/screens/groups/group_bar.dart';
+import 'package:mull/screens/home/home_shell.dart';
 import 'package:mull/screens/groups/icon_picker.dart';
 import 'package:mull/ui/icons.dart';
 import 'package:mull/ui/sheet.dart';
+import 'package:mull/ui/tab_bar.dart';
 
 /// Walks every screen with the mockup data, screenshotting each one.
 ///
@@ -71,6 +73,21 @@ void main() {
     await settle(t, 700);
   }
 
+  /// A tab in the home bar, by its icon. Only the bar on screen is hit-testable,
+  /// so a group open over the home tabs does not confuse it.
+  Future<void> tapHome(WidgetTester t, HomeTab tab) async {
+    await t.tap(
+      find
+          .descendant(
+            of: find.byType(MullTabBar),
+            matching: find.byWidgetPredicate((w) => w is MullIcon && w.glyph == tab.glyph),
+          )
+          .hitTestable()
+          .first,
+    );
+    await settle(t, 700);
+  }
+
   /// The + in the group's bar.
   Future<void> tapAdd(WidgetTester t) async {
     await t.tap(
@@ -107,13 +124,19 @@ void main() {
     await shot(t, '02-claim-check');
     await dismissSheet(t);
 
-    // ---- a schedule whose turn has come
+    // ---- a schedule whose turn has come: behind the claim in the stack
+    final more = find.textContaining(RegExp(r'^\d+ more$'));
+    if (more.evaluate().isNotEmpty) {
+      await t.tap(more.first);
+      await settle(t);
+    }
     await t.tap(find.text('Open it').hitTestable().first);
     await settle(t);
     await shot(t, '03-recurring-due');
     await dismissSheet(t);
 
-    // ---- 4D, a group
+    // ---- 4D, a group, from the Groups tab
+    await tapHome(t, HomeTab.groups);
     await tapText(t, 'Goa trip');
     await shot(t, '04-group-detail');
 
@@ -185,44 +208,27 @@ void main() {
     await dismissSheet(t);
     await back(t);
 
-    // ---- where you stand with everyone, both directions
-    //
-    // Entered from the line under the headline rather than the one at the foot
-    // of the list: the footer sits beneath the floating button, so it is in
-    // the tree but not hit-testable, and a finder there fails with "no
-    // element" rather than anything that points at the button on top of it.
-    // Back to the top first: `tapText` scrolls to reach things, so the home
-    // screen is wherever the last one left it and the headline may be above
-    // the fold.
-    await t.drag(find.byType(Scrollable).last, const Offset(0, 900));
+    // ---- where you stand with everyone, both directions: "see who" on Home
+    // goes to the People tab
+    await tapHome(t, HomeTab.home);
+    await t.drag(find.byType(Scrollable).hitTestable().first, const Offset(0, 900));
     await settle(t, 800);
-    // By the text of the line, not its semantics label: the label merges with
-    // the hero amount above it into one node covering both, so tapping that
-    // node's centre lands on the number rather than the row.
     await t.tap(find.textContaining('owed to you').hitTestable().last);
     await settle(t, 900);
-    // Asserted, not assumed. A tap that lands on nothing still passes, and the
-    // only evidence would be a screenshot nobody opens.
-    expect(find.text('WHO OWES WHO'), findsOneWidget);
+    // Asserted, not assumed: a tap that lands on nothing still passes.
+    expect(find.text('YOU OWE').hitTestable(), findsOneWidget);
     await shot(t, '12-who-owes-who');
-    await dismissSheet(t);
 
     // ---- one person, netted across every ledger they are in
-    //
-    // A drag rather than ensureVisible: a ListView builds its children lazily,
-    // so a row below the fold is not in the tree for a finder to find yet.
-    await t.drag(find.byType(Scrollable).last, const Offset(0, -520));
-    await settle(t, 800);
-    await t.tap(find.text('Sahil').hitTestable().last);
+    await t.tap(find.text('Sahil').hitTestable().first);
     await settle(t, 900);
     expect(find.text('ACROSS'), findsOneWidget);
     await shot(t, '12b-one-person');
     await dismissSheet(t);
-    await t.drag(find.byType(Scrollable).last, const Offset(0, 520));
-    await settle(t, 800);
 
-    // ---- 4B and 4C, starting something new
-    await tapText(t, 'New group');
+    // ---- 4B and 4C, starting something new, from the Groups tab
+    await tapHome(t, HomeTab.groups);
+    await tapText(t, '+ New group');
     await settle(t, 800);
     await shot(t, '13-name-the-group');
     await t.enterText(find.byType(TextField).first, 'Ski trip');
@@ -244,21 +250,17 @@ void main() {
     await dismissSheet(t);
     await back(t);
 
-    // ---- the profile
-    await t.tap(find.bySemanticsLabel(RegExp('^Profile and settings')).hitTestable().last);
-    await settle(t);
+    // ---- the You tab
+    await tapHome(t, HomeTab.you);
     await shot(t, '15-profile');
     await tapText(t, 'How it works');
     await shot(t, '15b-how-it-works');
     await dismissSheet(t);
-    await t.tap(find.bySemanticsLabel(RegExp('^Profile and settings')).hitTestable().last);
-    await settle(t);
     await tapText(t, 'Light');
     await shot(t, '16-profile-light');
     await tapText(t, 'Dark');
     await settle(t);
-    await t.tap(glyph(MullGlyph.close));
-    await settle(t, 900);
+    await tapHome(t, HomeTab.home);
 
     // ---- and the screen an app with nothing in it shows
     store

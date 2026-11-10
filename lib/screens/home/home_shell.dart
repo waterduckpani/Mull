@@ -6,7 +6,9 @@ import '../../ui/page.dart';
 import '../../ui/sheet.dart';
 import '../../ui/tab_bar.dart';
 import '../../ui/tokens.dart';
+import '../../data/store.dart';
 import '../groups/create_group_flow.dart';
+import '../groups/expense_sheet.dart';
 import '../groups/group_screen.dart';
 import '../profile_sheet.dart';
 import 'groups_tab.dart';
@@ -138,7 +140,9 @@ class _HomeShellState extends State<HomeShell> {
                 items: [for (final tab in HomeTab.values) TabItem(tab.label, tab.glyph)],
                 current: _tab.index,
                 onSelect: (i) => _select(HomeTab.values[i]),
-                onAdd: () {},
+                // Add an expense to whichever group; with none yet there is
+                // nothing to add it to, so the + starts one.
+                onAdd: () => context.readStore.groups.isEmpty ? _start() : showQuickAdd(context),
               ),
             ),
           ],

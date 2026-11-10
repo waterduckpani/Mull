@@ -4,8 +4,10 @@ import 'package:mull/core/split.dart';
 import 'package:mull/data/store.dart';
 import 'package:mull/main.dart';
 import 'package:mull/screens/groups/group_bar.dart';
+import 'package:mull/screens/home/home_shell.dart';
 import 'package:mull/ui/icons.dart';
 import 'package:mull/ui/sheet.dart';
+import 'package:mull/ui/tab_bar.dart';
 
 /// Screenshots of the 2026-09-27 changes: the net-off card, quick add, the
 /// group header, a group with nothing to settle (no Settle up section), and the expense view with its note and
@@ -53,6 +55,20 @@ void main() {
     await settle(t, 700);
   }
 
+  /// A tab in the home bar, by its icon; only the bar on screen is hit-testable.
+  Future<void> tapHome(WidgetTester t, HomeTab tab) async {
+    await t.tap(
+      find
+          .descendant(
+            of: find.byType(MullTabBar),
+            matching: find.byWidgetPredicate((w) => w is MullIcon && w.glyph == tab.glyph),
+          )
+          .hitTestable()
+          .first,
+    );
+    await settle(t, 700);
+  }
+
   Future<void> back(WidgetTester t) async {
     await t.tap(find.byWidgetPredicate((w) => w is MullIcon && w.glyph == MullGlyph.chevronLeft).hitTestable().last);
     await settle(t, 700);
@@ -89,10 +105,18 @@ void main() {
 
     await shot(t, 'c01-home-netted');
 
-    await tapText(t, 'Add expense');
+    // The + in the home bar asks which group.
+    await t.tap(
+      find
+          .descendant(of: find.byType(MullTabBar), matching: find.byWidgetPredicate((w) => w is MullIcon && w.glyph == MullGlyph.plus))
+          .hitTestable()
+          .first,
+    );
+    await settle(t);
     await shot(t, 'c02-quick-add-picker');
     await dismissSheet(t);
 
+    await tapHome(t, HomeTab.groups);
     await tapText(t, 'Goa trip');
     await shot(t, 'c03-group-square');
     await back(t);

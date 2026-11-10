@@ -4,8 +4,10 @@ import 'package:integration_test/integration_test.dart';
 import 'package:mull/data/store.dart';
 import 'package:mull/main.dart';
 import 'package:mull/screens/groups/group_bar.dart';
+import 'package:mull/screens/home/home_shell.dart';
 import 'package:mull/ui/icons.dart';
 import 'package:mull/ui/sheet.dart';
+import 'package:mull/ui/tab_bar.dart';
 
 /// The light-theme captures the App Store reel (films/appstore-reel) is cut
 /// from. Same sample data as tour_test, with Appearance set to Light first.
@@ -72,6 +74,20 @@ void main() {
     await settle(t);
   }
 
+  /// A tab in the home bar, by its icon; only the bar on screen is hit-testable.
+  Future<void> tapHome(WidgetTester t, HomeTab tab) async {
+    await t.tap(
+      find
+          .descendant(
+            of: find.byType(MullTabBar),
+            matching: find.byWidgetPredicate((w) => w is MullIcon && w.glyph == tab.glyph),
+          )
+          .hitTestable()
+          .first,
+    );
+    await settle(t, 700);
+  }
+
   Future<void> back(WidgetTester t) async {
     await t.tap(glyph(MullGlyph.chevronLeft));
     await settle(t, 700);
@@ -86,12 +102,11 @@ void main() {
       await settle(t, 1500);
     }
 
-    // Light first. Nothing on the profile sheet is captured.
-    await t.tap(find.bySemanticsLabel(RegExp('^Profile and settings')).hitTestable().last);
-    await settle(t);
+    // Light first. Nothing on the You tab is captured.
+    await tapHome(t, HomeTab.you);
     await tapText(t, 'Light');
     await settle(t);
-    await t.tap(glyph(MullGlyph.close));
+    await tapHome(t, HomeTab.home);
     await settle(t, 1200);
 
     await shot(t, 'home');
@@ -100,11 +115,17 @@ void main() {
     await shot(t, 'claim-check');
     await dismissSheet(t);
 
+    final more = find.textContaining(RegExp(r'^\d+ more$'));
+    if (more.evaluate().isNotEmpty) {
+      await t.tap(more.first);
+      await settle(t);
+    }
     await t.tap(find.text('Open it').hitTestable().first);
     await settle(t);
     await shot(t, 'recurring-due');
     await dismissSheet(t);
 
+    await tapHome(t, HomeTab.groups);
     await tapText(t, 'Goa trip');
     await shot(t, 'group-detail');
 
@@ -131,23 +152,20 @@ void main() {
     await shot(t, 'group-after-expense');
     await back(t);
 
-    await t.drag(find.byType(Scrollable).last, const Offset(0, 900));
+    await tapHome(t, HomeTab.home);
+    await t.drag(find.byType(Scrollable).hitTestable().first, const Offset(0, 900));
     await settle(t, 800);
     await t.tap(find.textContaining('owed to you').hitTestable().last);
     await settle(t, 900);
-    expect(find.text('WHO OWES WHO'), findsOneWidget);
+    expect(find.text('YOU OWE').hitTestable(), findsOneWidget);
     await shot(t, 'who-owes-who');
-    await dismissSheet(t);
 
-    await t.drag(find.byType(Scrollable).last, const Offset(0, -520));
-    await settle(t, 800);
-    await t.tap(find.text('Sahil').hitTestable().last);
+    await t.tap(find.text('Sahil').hitTestable().first);
     await settle(t, 900);
     expect(find.text('ACROSS'), findsOneWidget);
     await shot(t, 'one-person');
     await dismissSheet(t);
-    await t.drag(find.byType(Scrollable).last, const Offset(0, 900));
-    await settle(t, 800);
+    await tapHome(t, HomeTab.home);
 
     // The claim, confirmed: the card leaves the home screen.
     await tapText(t, 'Check');

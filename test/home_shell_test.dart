@@ -2,6 +2,7 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mull/data/store.dart';
+import 'package:mull/screens/groups/group_bar.dart';
 import 'package:mull/screens/groups/group_screen.dart';
 import 'package:mull/screens/home/home_shell.dart';
 import 'package:mull/ui/sheet.dart';
@@ -88,5 +89,28 @@ void main() {
     pages.currentState!.pop();
     await t.pumpAndSettle();
     expect(Toast.raise, greaterThanOrEqualTo(MullTabBar.height));
+  });
+
+  shellTest('with no groups yet, the + starts one', (t) async {
+    await pumpShell(t, store: MullStore.memory()..completeOnboarding(name: 'Bharat'));
+    await t.tap(find.descendant(of: find.byType(MullTabBar), matching: find.bySemanticsLabel('Add an expense')));
+    await t.pumpAndSettle();
+    expect(find.text('Trip to Goa'), findsOneWidget, reason: 'the create flow');
+  });
+
+  shellTest('with groups, the + asks which one', (t) async {
+    await pumpShell(t);
+    await t.tap(find.descendant(of: find.byType(MullTabBar), matching: find.bySemanticsLabel('Add an expense')));
+    await t.pumpAndSettle();
+    expect(find.text('Add it to'), findsOneWidget);
+  });
+
+  shellTest('a group covers the home bar: one bar on screen', (t) async {
+    await pumpShell(t);
+    await tapTab(t, 'Groups');
+    await t.tap(find.descendant(of: find.byKey(const ValueKey('home-tab-groups')), matching: find.text('Flat')));
+    await t.pumpAndSettle();
+    expect(find.byType(MullTabBar).hitTestable(), findsOneWidget);
+    expect(find.descendant(of: find.byType(GroupBar), matching: find.byType(MullTabBar)).hitTestable(), findsOneWidget);
   });
 }
