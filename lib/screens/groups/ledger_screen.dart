@@ -47,15 +47,12 @@ class _LedgerScreenState extends State<LedgerScreen> {
       bottomInset: widget.bottomInset,
       glow: const GlowSpec(size: 430, top: -160, left: -150, right: null),
       header: const DetailBar(),
-      footnote: onExpenses
-          ? (expenses.isEmpty ? null : 'Settled items stay here for good.')
-          : (settlements.isEmpty ? null : 'A claim only clears a balance once it is confirmed.'),
-      bottom: PillButton(
-        'Add an expense',
-        onTap: () => showAddExpense(context, group),
-      ),
       children: [
-        const PageTitle('Ledger', padding: EdgeInsets.fromLTRB(Gutter.text, 22, Gutter.text, 0)),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(Gutter.text, 22, Gutter.text, 0),
+          child: Text(group.title, style: MullType.caption(context.c.ink3, size: 12.5)),
+        ),
+        const PageTitle('Ledger', padding: EdgeInsets.fromLTRB(Gutter.text, 2, Gutter.text, 0)),
         Padding(
           padding: const EdgeInsets.fromLTRB(Gutter.card, 24, Gutter.card, 0),
           child: Segmented(
@@ -78,7 +75,7 @@ class _LedgerScreenState extends State<LedgerScreen> {
               context,
               store,
               [for (final e in expenses) (e.date, e)],
-              (item) => _ExpenseRow(
+              (item) => ExpenseRow(
                 key: ValueKey(item.id as String),
                 group: group,
                 expense: item as Expense,
@@ -96,11 +93,17 @@ class _LedgerScreenState extends State<LedgerScreen> {
             context,
             store,
             [for (final s in settlements) (s.date, s)],
-            (item) => _SettlementRow(
+            (item) => SettlementRow(
               key: ValueKey((item as Settlement).id),
               group: group,
               settlement: item,
             ),
+          ),
+
+        if (onExpenses ? expenses.isNotEmpty : settlements.isNotEmpty)
+          Footnote(
+            onExpenses ? 'Settled items stay here for good.' : 'A claim only clears a balance once it is confirmed.',
+            padding: const EdgeInsets.fromLTRB(Gutter.text, 26, Gutter.text, 0),
           ),
       ],
     );
@@ -143,6 +146,7 @@ class _Row extends StatelessWidget {
     required this.amount,
     this.dimmed = false,
     this.trailing,
+    this.under,
     this.onTap,
     this.onLongPress,
   });
@@ -151,6 +155,9 @@ class _Row extends StatelessWidget {
   final String caption;
   final int amount;
   final bool dimmed;
+
+  /// A line under the amount: what part of it was yours.
+  final InlineSpan? under;
   final Widget? trailing;
   final VoidCallback? onTap;
   final VoidCallback? onLongPress;
@@ -163,7 +170,7 @@ class _Row extends StatelessWidget {
       onLongPress: onLongPress,
       scale: .99,
       haptic: false,
-      semanticLabel: '$title, ${inr(amount)}, $caption',
+      semanticLabel: [title, inr(amount), ?under?.toPlainText(), caption].join(', '),
       child: ExcludeSemantics(
         // Settled rows step back through ink weight, not opacity: fading the
         // whole row took its caption under the contrast floor.
@@ -204,9 +211,18 @@ class _Row extends StatelessWidget {
                       ),
                     ),
                     const SizedBox(width: 14),
-                    Text(
-                      inr(amount),
-                      style: MullType.listAmount(dimmed ? c.ink2 : c.ink),
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        Text(
+                          inr(amount),
+                          style: MullType.listAmount(dimmed ? c.ink2 : c.ink),
+                        ),
+                        if (under case final under?) ...[
+                          const SizedBox(height: 5),
+                          Text.rich(under, style: MullType.caption(c.ink3, size: 11.5)),
+                        ],
+                      ],
                     ),
                   ],
                 ),
@@ -220,8 +236,9 @@ class _Row extends StatelessWidget {
   }
 }
 
-class _ExpenseRow extends StatelessWidget {
-  const _ExpenseRow({
+/// An expense as the ledger shows it: the total, and your part of it.
+class ExpenseRow extends StatelessWidget {
+  const ExpenseRow({
     super.key,
     required this.group,
     required this.expense,
@@ -237,6 +254,10 @@ class _ExpenseRow extends StatelessWidget {
     final c = context.c;
     final store = context.store;
     final payer = group.memberById(expense.payerId);
+    // The total alone read as if all of it was yours: "₹10,000 · You paid" for
+    // a dinner you were 90% of. A share of nothing says so, even when you
+    // paid, because the cost was somebody else's.
+    final share = expense.shares[group.you?.id] ?? 0;
 
     final split = switch (expense.method) {
       SplitMethod.equal => 'split ${expense.shares.length} ways',
@@ -259,6 +280,14 @@ class _ExpenseRow extends StatelessWidget {
         if (expense.note case final note?) note.split('\n').first,
       ].join('\n'),
       amount: expense.amount,
+      under: share > 0
+          ? TextSpan(
+              children: [
+                const TextSpan(text: 'your share '),
+                TextSpan(text: inr(share), style: TextStyle(color: c.ink2)),
+              ],
+            )
+          : const TextSpan(text: 'not yours'),
       dimmed: settled,
       trailing: expense.isRecurring
           ? Padding(
@@ -272,8 +301,9 @@ class _ExpenseRow extends StatelessWidget {
   }
 }
 
-class _SettlementRow extends StatelessWidget {
-  const _SettlementRow({super.key, required this.group, required this.settlement});
+/// A payment between two people, as the ledger shows it.
+class SettlementRow extends StatelessWidget {
+  const SettlementRow({super.key, required this.group, required this.settlement});
 
   final Group group;
   final Settlement settlement;
