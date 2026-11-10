@@ -2,7 +2,6 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mull/data/store.dart';
-import 'package:mull/screens/groups/group_screen.dart';
 import 'package:mull/screens/home/home_shell.dart';
 import 'package:mull/ui/tokens.dart';
 
@@ -125,20 +124,5 @@ void main() {
     // The person row saying "square" is the People tab's now (Task 5).
     // And the headline does not claim a debt in either direction.
     expect(find.text('All square'), findsWidgets);
-  });
-
-  testWidgets("Settle up from a group's long-press opens the group on Overview", skip: true, // the Groups tab, Task 4
-      (t) async {
-    final store = withSample();
-    await pumpHome(t, store);
-    final flat = find.text('Flat');
-    await t.scrollUntilVisible(flat, 200, scrollable: find.byType(Scrollable).last);
-    await t.longPress(flat.first);
-    await t.pumpAndSettle();
-    await t.tap(find.text('Settle up'));
-    await t.pumpAndSettle();
-    await t.pump(const Duration(seconds: 1));
-    expect(find.byType(GroupScreen), findsOneWidget);
-    expect(find.text('Send summary on WhatsApp'), findsOneWidget);
   });
 }

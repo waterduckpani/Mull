@@ -3,27 +3,91 @@ import 'package:flutter/cupertino.dart';
 import '../../core/money.dart';
 import '../../data/models.dart';
 import '../../data/store.dart';
-import '../../ui/group_icons.dart';
-import '../../ui/icons.dart';
 import '../../ui/page.dart';
 import '../../ui/sheet.dart';
 import '../../ui/tokens.dart';
 import '../../ui/widgets.dart';
-import '../groups/expense_sheet.dart';
 import '../groups/group_screen.dart';
 import '../groups/group_sheets.dart';
 import '../groups/icon_picker.dart';
 
-/// How much of the screen a ledger row is allowed to take.
-enum _Density {
-  /// One ledger. The number goes big and the card carries the detail.
-  roomy,
+/// The Groups tab: every group as a line you can scan.
+///
+/// On the old home they were cards, roomy enough that one and a half fitted
+/// on a phone under everything waiting on you. Here they are the whole page,
+/// in the order that matters: what you owe, then what you are owed, then the
+/// ones that are settled, under their own heading.
+class GroupsTabPage extends StatelessWidget {
+  const GroupsTabPage({super.key, this.bottomInset = 0, required this.onStart});
 
-  /// Two or three. The icon and the people stay, the number comes back down.
-  medium,
+  /// Room under the content for the bar.
+  final double bottomInset;
 
-  /// Four or more. A line you scan, which is all a list this long can be.
-  compact,
+  /// Starts a group.
+  final Future<void> Function({String? name}) onStart;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.c;
+    final store = context.store;
+    final groups = store.namedGroups;
+    bool settled(Group g) => g.youOweHere == 0 && g.owedToYouHere == 0;
+    final open = groups.where((g) => !settled(g)).toList();
+    final done = groups.where(settled).toList();
+
+    void openGroup(Group g) => Navigator.of(context).push(
+      CupertinoPageRoute(builder: (_) => GroupScreen(groupId: g.id)),
+    );
+
+    Widget rows(List<Group> list) => Stacked(
+      gap: 8,
+      padding: const EdgeInsets.symmetric(horizontal: Gutter.card),
+      children: [
+        for (final g in list) _LedgerRow(key: ValueKey(g.id), group: g, onTap: () => openGroup(g)),
+      ],
+    );
+
+    return MullPage(
+      bottomInset: bottomInset,
+      glow: const GlowSpec(size: 430, top: -160, left: -150, right: null),
+      onRefresh: store.pullNow,
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(Gutter.text, 22, Gutter.card, 0),
+          child: Row(
+            children: [
+              Expanded(
+                child: Semantics(header: true, child: Text('Groups', style: MullType.screenTitle(c.ink))),
+              ),
+              // Here rather than at the end of the list, so it is in the same
+              // place however many groups there are.
+              InlineButton('+ New group', height: 40, filled: false, onTap: () => onStart()),
+            ],
+          ),
+        ),
+        const SizedBox(height: 26),
+        if (groups.isEmpty)
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: Gutter.text),
+            child: Text(
+              'No groups yet. A flat, a trip, a dinner: start one and add who is in it.',
+              style: MullType.body(c.ink3),
+            ),
+          ),
+        if (open.isNotEmpty) rows(open),
+        if (done.isNotEmpty) ...[
+          const Eyebrow(
+            'Settled',
+            size: 10.5,
+            tracking: .18,
+            padding: EdgeInsets.fromLTRB(Gutter.text, 34, Gutter.text, 14),
+          ),
+          rows(done),
+        ],
+        const SizedBox(height: 12),
+      ],
+    );
+  }
 }
 
 /// One entry in the GROUPS or PEOPLE list.
@@ -32,12 +96,10 @@ class _LedgerRow extends StatelessWidget {
     super.key,
     required this.group,
     required this.onTap,
-    this.density = _Density.compact,
   });
 
   final Group group;
   final VoidCallback onTap;
-  final _Density density;
 
   @override
   Widget build(BuildContext context) {
@@ -86,39 +148,6 @@ class _LedgerRow extends StatelessWidget {
       ),
     );
 
-    if (density == _Density.compact) {
-      return wrap(
-        radius: 26,
-        padding: const EdgeInsets.fromLTRB(24, 21, 24, 21),
-        Row(
-          children: [
-            if (group.isDirect) ...[
-              MullIcon(MullGlyph.person, size: 15, color: c.ink3, strokeWidth: 1.6),
-              const SizedBox(width: 10),
-            ] else if (group.icon != null) ...[
-              Icon(groupGlyph(group.icon), size: 16, color: c.ink3),
-              const SizedBox(width: 10),
-            ],
-            Expanded(
-              child: Text(
-                group.title,
-                style: MullType.cardTitle(settled ? c.ink2 : c.ink, size: 18),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
-            ),
-            const SizedBox(width: 12),
-            Text(label, style: MullType.caption(c.ink3)),
-            if (amount != null) ...[
-              const SizedBox(width: 10),
-              AnimatedAmount(amount, style: MullType.cardAmount(c.ink)),
-            ],
-          ],
-        ),
-      );
-    }
-
-    final roomy = density == _Density.roomy;
     final others = group.seated.where((m) => !m.isYou).toList();
     final roster = others.isEmpty
         ? 'Nobody else in here yet'
@@ -126,50 +155,42 @@ class _LedgerRow extends StatelessWidget {
         ? others.map(store.shortName).join(', ')
         : '${others.take(2).map(store.shortName).join(', ')} and ${others.length - 2} more';
 
+    // Two lines, as the Groups tab was drawn: who is in it under the name,
+    // and which way the money points over the amount. One line ran the
+    // label into the name on a narrow phone.
     return wrap(
-      radius: roomy ? 32 : 28,
-      padding: EdgeInsets.fromLTRB(24, roomy ? 24 : 20, 24, roomy ? 26 : 22),
-      Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      radius: 24,
+      padding: const EdgeInsets.fromLTRB(18, 14, 20, 14),
+      Row(
         children: [
-          Row(
-            children: [
-              GroupBadge(group: group, size: roomy ? 44 : 38, glyphSize: roomy ? 21 : 18, quiet: true),
-              const SizedBox(width: 14),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      group.title,
-                      style: MullType.cardTitle(settled ? c.ink2 : c.ink, size: roomy ? 21 : 19),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    const SizedBox(height: 3),
-                    Text(
-                      roster,
-                      style: MullType.caption(c.ink3, size: 11.5),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ],
+          GroupBadge(group: group, size: 38, glyphSize: 18, quiet: true),
+          const SizedBox(width: 13),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  group.title,
+                  style: MullType.cardTitle(settled ? c.ink2 : c.ink, size: 17),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                 ),
-              ),
-            ],
+                const SizedBox(height: 2),
+                Text(
+                  roster,
+                  style: MullType.caption(c.ink3, size: 11.5),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
+            ),
           ),
-          SizedBox(height: roomy ? 24 : 16),
-          Row(
+          const SizedBox(width: 12),
+          Column(
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
-              Expanded(child: Text(label, style: MullType.caption(c.ink3))),
-              if (amount != null)
-                AnimatedAmount(
-                  amount,
-                  style: roomy
-                      ? excon(38, tracking: -.04, height: .95, color: c.ink)
-                      : MullType.cardAmount(c.ink, size: 24),
-                ),
+              Text(label, style: MullType.caption(c.ink3, size: 11)),
+              if (amount != null) AnimatedAmount(amount, style: MullType.cardAmount(c.ink, size: 18)),
             ],
           ),
         ],

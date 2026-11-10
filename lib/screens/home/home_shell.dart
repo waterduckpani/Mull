@@ -1,6 +1,5 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/foundation.dart';
-import 'package:flutter/material.dart';
 
 import '../../ui/icons.dart';
 import '../../ui/page.dart';
@@ -9,6 +8,7 @@ import '../../ui/tab_bar.dart';
 import '../../ui/tokens.dart';
 import '../groups/create_group_flow.dart';
 import '../groups/group_screen.dart';
+import 'groups_tab.dart';
 import 'home_tab.dart';
 
 /// The four places at the top of the app, in the order the bar shows them.
@@ -83,6 +83,7 @@ class _HomeShellState extends State<HomeShell> {
     key: ValueKey('home-tab-${tab.name}'),
     child: switch (tab) {
       HomeTab.home => HomeTabPage(bottomInset: MullTabBar.height, onStart: _start),
+      HomeTab.groups => GroupsTabPage(bottomInset: MullTabBar.height, onStart: _start),
       _ => MullPage(bottomInset: MullTabBar.height, children: [PageTitle(tab.label)]),
     },
   );
