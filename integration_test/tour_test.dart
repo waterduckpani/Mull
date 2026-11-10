@@ -137,6 +137,7 @@ void main() {
 
     // ---- 4D, a group, from the Groups tab
     await tapHome(t, HomeTab.groups);
+    await shot(t, '03b-groups-tab');
     await tapText(t, 'Goa trip');
     await shot(t, '04-group-detail');
 
