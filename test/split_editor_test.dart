@@ -138,6 +138,13 @@ void main() {
     });
   });
 
+  test('a rupee of rounding is "about", not three sentences', () {
+    final model = SplitModel(group: flat, amount: 200)..othersOweAll();
+    expect(model.shares, {dev.id: 100, raj.id: 100});
+    model.amount = 201;
+    expect(model.summary(name), 'Dev and Raj owe you about ₹101 each.');
+  });
+
   test('a big group says how many, not every name', () {
     final big = Group(name: 'Trip', members: [you, for (final n in ['A', 'B', 'C', 'D']) Member(name: n)]);
     final model = SplitModel(group: big, amount: 500);

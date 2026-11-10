@@ -6,6 +6,8 @@
 /// for the rounding to disagree.
 library;
 
+import 'dart:math';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -244,8 +246,11 @@ class SplitModel extends ChangeNotifier {
     String owes(Member m) => m.isYou ? 'owe' : 'owes';
 
     final amounts = {for (final m in debtors) s[m.id]!};
-    if (amounts.length == 1) {
-      final each = inr(amounts.single);
+    // ₹2,600 three ways is 867, 867 and 866. That is one even split, not three
+    // different debts, and reading it out as three sentences says otherwise.
+    final roughlyEven = amounts.length > 1 && amounts.reduce(max) - amounts.reduce(min) <= 1;
+    if (amounts.length == 1 || roughlyEven) {
+      final each = roughlyEven ? 'about ${inr(amounts.reduce(max))}' : inr(amounts.single);
       if (debtors.length == 1) return '${who(debtors.single)} ${owes(debtors.single)} $to $each.';
       if (debtors.length <= 3) {
         final names = debtors.map(who).toList();
