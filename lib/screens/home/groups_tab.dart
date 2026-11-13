@@ -1,22 +1,27 @@
 import 'package:flutter/cupertino.dart';
 
+import '../../core/dates.dart';
 import '../../core/money.dart';
 import '../../data/models.dart';
 import '../../data/store.dart';
+import '../../ui/icons.dart';
 import '../../ui/page.dart';
 import '../../ui/sheet.dart';
 import '../../ui/tokens.dart';
 import '../../ui/widgets.dart';
+import '../groups/group_bar.dart';
 import '../groups/group_screen.dart';
 import '../groups/group_sheets.dart';
 import '../groups/icon_picker.dart';
 
-/// The Groups tab: every group as a line you can scan.
+/// The Groups tab: every group, sized to how many there are.
 ///
-/// On the old home they were cards, roomy enough that one and a half fitted
-/// on a phone under everything waiting on you. Here they are the whole page,
-/// in the order that matters: what you owe, then what you are owed, then the
-/// ones that are settled, under their own heading.
+/// From three groups up, each is a line you can scan, in the order that
+/// matters: what you owe, then what you are owed, then the settled ones under
+/// their own heading. With one or two, lines left most of the page empty, so
+/// each group gets a card instead with who is in it, where you stand, the
+/// last thing added and the two things you came to do. With none, the page
+/// shows what a group looks like rather than a sentence about one.
 class GroupsTabPage extends StatelessWidget {
   const GroupsTabPage({super.key, this.bottomInset = 0, required this.onStart});
 
@@ -26,6 +31,9 @@ class GroupsTabPage extends StatelessWidget {
   /// Starts a group.
   final Future<void> Function({String? name}) onStart;
 
+  /// Up to this many groups, each gets a card rather than a line.
+  static const roomyUpTo = 2;
+
   @override
   Widget build(BuildContext context) {
     final c = context.c;
@@ -34,16 +42,20 @@ class GroupsTabPage extends StatelessWidget {
     bool settled(Group g) => g.youOweHere == 0 && g.owedToYouHere == 0;
     final open = groups.where((g) => !settled(g)).toList();
     final done = groups.where(settled).toList();
+    final roomy = groups.length <= roomyUpTo;
 
-    void openGroup(Group g) => Navigator.of(context).push(
-      CupertinoPageRoute(builder: (_) => GroupScreen(groupId: g.id)),
+    void openGroup(Group g, {GroupTab tab = GroupTab.overview}) => Navigator.of(context).push(
+      CupertinoPageRoute(builder: (_) => GroupScreen(groupId: g.id, initialTab: tab)),
     );
 
     Widget rows(List<Group> list) => Stacked(
-      gap: 8,
+      gap: roomy ? 12 : 8,
       padding: const EdgeInsets.symmetric(horizontal: Gutter.card),
       children: [
-        for (final g in list) _LedgerRow(key: ValueKey(g.id), group: g, onTap: () => openGroup(g)),
+        for (final g in list)
+          roomy
+              ? _GroupCard(key: ValueKey(g.id), group: g, onOpen: (tab) => openGroup(g, tab: tab))
+              : _LedgerRow(key: ValueKey(g.id), group: g, onTap: () => openGroup(g)),
       ],
     );
 
@@ -66,26 +78,367 @@ class GroupsTabPage extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 26),
-        if (groups.isEmpty)
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: Gutter.text),
-            child: Text(
-              'No groups yet. A flat, a trip, a dinner: start one and add who is in it.',
-              style: MullType.body(c.ink3),
-            ),
-          ),
+        if (groups.isEmpty) _NoGroups(onStart: () => onStart()),
         if (open.isNotEmpty) rows(open),
         if (done.isNotEmpty) ...[
-          const Eyebrow(
-            'Settled',
-            size: 10.5,
-            tracking: .18,
-            padding: EdgeInsets.fromLTRB(Gutter.text, 34, Gutter.text, 14),
-          ),
+          if (!roomy || open.isNotEmpty)
+            const Eyebrow(
+              'Settled',
+              size: 10.5,
+              tracking: .18,
+              padding: EdgeInsets.fromLTRB(Gutter.text, 34, Gutter.text, 14),
+            ),
           rows(done),
         ],
+        if (groups.isNotEmpty && roomy) _StartAnother(onTap: () => onStart()),
         const SizedBox(height: 12),
       ],
+    );
+  }
+}
+
+/// A group with room to breathe: for when there are only one or two.
+class _GroupCard extends StatelessWidget {
+  const _GroupCard({super.key, required this.group, required this.onOpen});
+
+  final Group group;
+  final void Function(GroupTab tab) onOpen;
+
+  @override
+  Widget build(BuildContext context) {
+    final store = context.store;
+    final owing = group.youOweHere;
+    final owed = group.owedToYouHere;
+    final others = group.seated.where((m) => !m.isYou).toList();
+
+    final (label, amount) = switch (null) {
+      _ when owing > 0 && owed > 0 => ('get back ${inr(owed)} · you owe', owing),
+      _ when owing > 0 => ('you owe', owing),
+      _ when owed > 0 => ('you get back', owed),
+      _ => ('settled up', null),
+    };
+
+    // "You paid Ananya", "Sahil paid you": you are only capitalised first.
+    String name(String id, {bool first = false}) => switch (group.memberById(id)) {
+      final m? when m.isYou => first ? 'You' : 'you',
+      final m? => store.shortName(m),
+      null => 'Someone',
+    };
+    final items = <Object>[...group.expenses, ...group.settlements]
+      ..sort((a, b) => newestFirst(ledgerMoment(a), ledgerMoment(b)));
+    final latest = items.firstOrNull;
+    final when = latest == null ? '' : daysAgo(ledgerMoment(latest).$1, DateTime.now());
+    final last = switch (latest) {
+      Expense e => '${e.description} · ${inr(e.amount)} · $when',
+      Settlement s when s.offset => '${name(s.fromId, first: true)} and ${name(s.toId)} netted off · $when',
+      Settlement s => '${name(s.fromId, first: true)} paid ${name(s.toId)} ${inr(s.amount)} · $when',
+      _ => null,
+    };
+
+    return _CardFace(
+      badge: GroupBadge(group: group, size: 46, glyphSize: 22, quiet: true),
+      title: group.title,
+      roster: _roster(store, others),
+      label: label,
+      amount: amount,
+      faces: [for (final m in others) _initials(m.name)],
+      last: last,
+      flat: amount == null,
+      semanticLabel: amount == null ? '${group.title}, settled up' : '${group.title}, $label ${inr(amount)}',
+      onTap: () => onOpen(GroupTab.overview),
+      onLongPress: () => showLedgerActions(context, group),
+      actions: [
+        if (others.isEmpty)
+          // An expense split with nobody moves no money; the group's + says
+          // the same thing.
+          InlineButton("Add who's in", height: 44, expand: true, onTap: () => onOpen(GroupTab.people))
+        else
+          InlineButton('Add expense', height: 44, expand: true, onTap: () => showAddExpense(context, group)),
+        if (!group.youAreSquare)
+          InlineButton('Settle up', height: 44, expand: true, filled: false, onTap: () => onOpen(GroupTab.overview)),
+      ],
+    );
+  }
+}
+
+String _initials(String name) =>
+    name.trim().split(RegExp(r'\s+')).where((w) => w.isNotEmpty).take(2).map((w) => w[0]).join().toUpperCase();
+
+String _roster(MullStore store, List<Member> others) => others.isEmpty
+    ? 'Nobody else in here yet'
+    : others.length <= 3
+    ? 'You, ${others.map(store.shortName).join(', ')}'
+    : 'You, ${others.take(2).map(store.shortName).join(', ')} and ${others.length - 2} more';
+
+/// What a group card shows, from whatever it is given: a real group, or the
+/// example on an empty Groups tab.
+class _CardFace extends StatelessWidget {
+  const _CardFace({
+    required this.badge,
+    required this.title,
+    required this.roster,
+    required this.label,
+    required this.amount,
+    required this.faces,
+    this.last,
+    this.flat = false,
+    this.semanticLabel,
+    this.onTap,
+    this.onLongPress,
+    this.actions = const [],
+  });
+
+  final Widget badge;
+  final String title;
+  final String roster;
+  final String label;
+  final int? amount;
+
+  /// Initials of everyone else in it.
+  final List<String> faces;
+
+  /// The latest thing added, already worded.
+  final String? last;
+
+  /// Settled: sits flatter, the way a settled row does.
+  final bool flat;
+
+  final String? semanticLabel;
+  final VoidCallback? onTap;
+  final VoidCallback? onLongPress;
+  final List<Widget> actions;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.c;
+    const shown = 4;
+
+    final body = Container(
+      padding: const EdgeInsets.fromLTRB(20, 20, 20, 18),
+      decoration: surfaceOf(c, flat ? Lift.flat : Lift.card, radius: BorderRadius.circular(28)),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              badge,
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(title, style: MullType.cardTitle(c.ink, size: 19), maxLines: 1, overflow: TextOverflow.ellipsis),
+                    const SizedBox(height: 3),
+                    Text(roster, style: MullType.caption(c.ink3, size: 12), maxLines: 1, overflow: TextOverflow.ellipsis),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 22),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(label, style: MullType.caption(c.ink3, size: 12)),
+                    const SizedBox(height: 4),
+                    amount == null
+                        ? Text('All square', style: MullType.cardAmount(c.ink2, size: 30))
+                        : AnimatedAmount(amount!, style: MullType.cardAmount(c.ink, size: 34)),
+                  ],
+                ),
+              ),
+              for (final (i, face) in faces.take(shown).indexed)
+                Padding(
+                  padding: EdgeInsets.only(left: i == 0 ? 0 : 4),
+                  child: _Face(face),
+                ),
+              if (faces.length > shown)
+                Padding(padding: const EdgeInsets.only(left: 4), child: _Face('+${faces.length - shown}')),
+            ],
+          ),
+          if (last != null) ...[
+            const SizedBox(height: 18),
+            Container(height: 1, color: c.line),
+            const SizedBox(height: 14),
+            Row(
+              children: [
+                Text('Latest', style: MullType.caption(c.ink2, size: 12)),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(last!, style: MullType.caption(c.ink3, size: 12), maxLines: 1, overflow: TextOverflow.ellipsis),
+                ),
+              ],
+            ),
+          ],
+          if (actions.isNotEmpty) ...[
+            const SizedBox(height: 16),
+            Row(
+              children: [
+                for (final (i, action) in actions.indexed) ...[
+                  if (i > 0) const SizedBox(width: 8),
+                  Expanded(child: action),
+                ],
+              ],
+            ),
+          ],
+        ],
+      ),
+    );
+
+    if (onTap == null) return ExcludeSemantics(child: body);
+    return Semantics(
+      container: true,
+      label: semanticLabel,
+      child: Pressable(onTap: onTap, onLongPress: onLongPress, scale: .99, child: body),
+    );
+  }
+}
+
+class _Face extends StatelessWidget {
+  const _Face(this.text);
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.c;
+    return Container(
+      width: 30,
+      height: 30,
+      alignment: Alignment.center,
+      decoration: BoxDecoration(shape: BoxShape.circle, color: c.quiet),
+      child: Text(text, style: MullType.caption(c.ink2, size: 10.5).copyWith(height: 1)),
+    );
+  }
+}
+
+/// Groups with nothing in it yet: two example cards, fanned, and what a group
+/// is for. Home already asks what you are splitting first; this tab shows
+/// what you will get.
+class _NoGroups extends StatelessWidget {
+  const _NoGroups({required this.onStart});
+
+  final VoidCallback onStart;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.c;
+
+    // Cards are translucent in dark mode, so each example sits on the
+    // screen colour: otherwise the one behind shows through the one in front.
+    Widget solid(Widget child) => DecoratedBox(
+      decoration: BoxDecoration(color: c.screen, borderRadius: BorderRadius.circular(28)),
+      child: child,
+    );
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Semantics(
+          label: 'An example group: Goa trip, with Sahil, Ananya and Kabir. You get back ₹2,400.',
+          child: ExcludeSemantics(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(Gutter.card + 6, 8, Gutter.card + 6, 0),
+              child: Stack(
+                children: [
+                  // Another group behind, peeking out above and to the right:
+                  // a stack, so it reads as one of several.
+                  Positioned.fill(
+                    child: Transform.translate(
+                      offset: const Offset(12, -16),
+                      child: Transform.rotate(
+                        angle: .05,
+                        child: solid(
+                          DecoratedBox(decoration: surfaceOf(c, Lift.flat, radius: BorderRadius.circular(28))),
+                        ),
+                      ),
+                    ),
+                  ),
+                  Transform.rotate(
+                    angle: -.025,
+                    child: solid(
+                      _CardFace(
+                        badge: IconWell(iconKey: 'beach', size: 46, glyphSize: 22, quiet: true, fallback: MullGlyph.groups),
+                        title: 'Goa trip',
+                        roster: 'You, Sahil, Ananya, Kabir',
+                        label: 'you get back',
+                        amount: 2400,
+                        faces: const ['SM', 'AR', 'KA'],
+                        last: 'Villa · ₹18,000 · yesterday',
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(Gutter.text, 36, Gutter.text, 0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('One group for\neach thing you share.', style: MullType.statement(c.ink, size: 30)),
+              const SizedBox(height: 12),
+              Text(
+                'The flat, a trip, a standing Friday dinner. Everyone in it sees the '
+                'same list of who paid, and Mull works out who pays whom.',
+                style: MullType.body(c.ink3),
+              ),
+            ],
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(Gutter.card, 24, Gutter.card, 0),
+          child: PillButton('Start a group', onTap: onStart),
+        ),
+      ],
+    );
+  }
+}
+
+/// Under one or two group cards: the next one, without a second big button.
+class _StartAnother extends StatelessWidget {
+  const _StartAnother({required this.onTap});
+
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.c;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(Gutter.card, 12, Gutter.card, 0),
+      child: Pressable(
+        onTap: onTap,
+        scale: .99,
+        semanticLabel: 'Start another group',
+        child: ExcludeSemantics(
+          child: Container(
+            padding: const EdgeInsets.fromLTRB(20, 18, 18, 18),
+            decoration: surfaceOf(c, Lift.flat, radius: BorderRadius.circular(24)),
+            child: Row(
+              children: [
+                MullIcon(MullGlyph.plus, size: 20, color: c.ink2, strokeWidth: 1.7),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('Start another group', style: MullType.cardTitle(c.ink2, size: 16)),
+                      const SizedBox(height: 2),
+                      Text('Keep each trip, flat or dinner to itself', style: MullType.caption(c.ink3, size: 11.5)),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
     );
   }
 }
