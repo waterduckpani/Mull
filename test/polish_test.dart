@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:mull/data/models.dart';
 import 'package:mull/data/store.dart';
 import 'package:mull/screens/groups/group_bar.dart';
+import 'package:mull/ui/icons.dart';
 import 'package:mull/ui/sheet.dart';
 import 'package:mull/ui/tokens.dart';
 
@@ -23,20 +24,22 @@ void main() {
     child: MaterialApp(theme: buildTheme(MullColors.dark), home: Scaffold(body: child)),
   );
 
-  testWidgets('the open tab name has room either side of it, Recurring included', (t) async {
+  testWidgets('the highlight comes to rest centred on the open tab', (t) async {
     await t.binding.setSurfaceSize(const Size(390, 844));
     addTearDown(() => t.binding.setSurfaceSize(null));
+    bool isPill(Widget w) =>
+        w is DecoratedBox &&
+        w.decoration is BoxDecoration &&
+        (w.decoration as BoxDecoration).borderRadius == BorderRadius.circular(24);
     for (final tab in GroupTab.values) {
       await t.pumpWidget(
         app(Align(alignment: Alignment.bottomCenter, child: GroupBar(current: tab, onSelect: (_) {}, onAdd: () {}))),
       );
       await t.pumpAndSettle();
-      final label = t.getRect(find.text(tab.label));
-      final pill = t.getRect(
-        find.ancestor(of: find.text(tab.label), matching: find.byType(AnimatedContainer)).first,
-      );
-      expect(label.left - pill.left, greaterThanOrEqualTo(8), reason: '${tab.label}, left');
-      expect(pill.right - label.right, greaterThanOrEqualTo(8), reason: '${tab.label}, right');
+      final icon = t.getCenter(find.byWidgetPredicate((w) => w is MullIcon && w.glyph == tab.glyph && w.filled));
+      final pill = t.getCenter(find.byWidgetPredicate(isPill));
+      expect(pill.dx, closeTo(icon.dx, .5), reason: tab.label);
+      expect(pill.dy, closeTo(icon.dy, 1), reason: tab.label);
     }
   });
 

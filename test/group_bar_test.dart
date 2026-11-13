@@ -58,12 +58,11 @@ void main() {
   Finder tab(String name) => find.bySemanticsLabel(RegExp('^$name, tab'));
   Finder plus() => find.bySemanticsLabel('Add an expense');
 
-  barTest('only the open tab shows its name', (t) async {
+  barTest('no tab shows its name on screen', (t) async {
     await pumpBar(t, current: GroupTab.ledger);
-    expect(find.text('Ledger'), findsOneWidget);
-    expect(find.text('Overview'), findsNothing);
-    expect(find.text('Recurring'), findsNothing);
-    expect(find.text('People'), findsNothing);
+    for (final open in GroupTab.values) {
+      expect(find.text(open.label), findsNothing);
+    }
   });
 
   barTest('the + sits dead centre whichever tab is open', (t) async {

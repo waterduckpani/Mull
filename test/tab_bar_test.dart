@@ -43,10 +43,59 @@ void main() {
     }
   });
 
-  barTest('only the open tab is named', (t) async {
+  barTest('no tab shows its name, but each still says it', (t) async {
     await pump(t, current: 2);
-    expect(find.text('People'), findsOneWidget);
-    expect(find.text('Home'), findsNothing);
+    for (final item in home) {
+      expect(find.text(item.label), findsNothing);
+    }
+    expect(find.bySemanticsLabel('People, tab 3 of 4'), findsOneWidget);
+  });
+
+  barTest('the open tab is the one filled in', (t) async {
+    await pump(t, current: 1);
+    final filled = t.widgetList<MullIcon>(find.byType(MullIcon)).where((i) => i.filled).map((i) => i.glyph);
+    expect(filled, [MullGlyph.grid]);
+  });
+
+  barTest('sliding along the bar opens the tab you let go on', (t) async {
+    int? picked;
+    await pump(t, onSelect: (i) => picked = i);
+    final from = t.getCenter(find.bySemanticsLabel('Home, tab 1 of 4'));
+    final to = t.getCenter(find.bySemanticsLabel('You, tab 4 of 4'));
+    final finger = await t.startGesture(from);
+    // Nothing opens while the finger is still down, even across the +.
+    for (var step = 1; step <= 12; step++) {
+      await finger.moveTo(Offset.lerp(from, to, step / 12)!);
+      await t.pump(const Duration(milliseconds: 16));
+    }
+    expect(picked, isNull);
+    // The icon under the finger fills in before it lifts.
+    final lit = t.widgetList<MullIcon>(find.byType(MullIcon)).where((i) => i.filled).map((i) => i.glyph);
+    expect(lit, [MullGlyph.person]);
+    await finger.up();
+    await t.pumpAndSettle();
+    expect(picked, 3);
+  });
+
+  barTest('letting go over the + lands on the nearer tab', (t) async {
+    int? picked;
+    await pump(t, onSelect: (i) => picked = i);
+    final from = t.getCenter(find.bySemanticsLabel('Home, tab 1 of 4'));
+    final plus = t.getCenter(find.bySemanticsLabel('Add an expense'));
+    await t.dragFrom(from, Offset(plus.dx - from.dx - 4, 0));
+    await t.pumpAndSettle();
+    expect(picked, 1);
+    await t.dragFrom(from, Offset(plus.dx - from.dx + 4, 0));
+    await t.pumpAndSettle();
+    expect(picked, 2);
+  });
+
+  barTest('pressing the + never moves the highlight', (t) async {
+    int? picked;
+    await pump(t, onSelect: (i) => picked = i);
+    await t.tap(find.bySemanticsLabel('Add an expense'));
+    await t.pumpAndSettle();
+    expect(picked, isNull);
   });
 
   barTest('the + is dead centre', (t) async {
