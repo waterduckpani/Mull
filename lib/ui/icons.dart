@@ -18,6 +18,8 @@ enum MullGlyph {
   ledger,
   home,
   grid,
+  invite,
+  addPerson,
 }
 
 /// The design's hand-drawn 24×24 stroke icons, painted directly (no SVG dependency).
@@ -282,6 +284,29 @@ class _GlyphPainter extends CustomPainter {
         for (final o in const [Offset(4.5, 4.5), Offset(13, 4.5), Offset(4.5, 13), Offset(13, 13)]) {
           shape(Path()..addRRect(RRect.fromRectAndRadius(o & const Size(6.5, 6.5), const Radius.circular(2))));
         }
+      case MullGlyph.invite:
+        // A paper plane: sent off to someone, the way Instagram shares.
+        canvas.drawPath(
+          Path()
+            ..moveTo(20, 4)
+            ..lineTo(3.8, 10.4)
+            ..lineTo(10.4, 13.5)
+            ..lineTo(13.6, 20)
+            ..close(),
+          stroke,
+        );
+        canvas.drawLine(const Offset(20, 4), const Offset(10.4, 13.5), stroke);
+      case MullGlyph.addPerson:
+        canvas.drawCircle(const Offset(10, 8.6), 3.4, stroke);
+        canvas.drawPath(
+          Path()
+            ..moveTo(3.8, 19.2)
+            ..cubicTo(3.8, 15.8, 6.6, 13.9, 10, 13.9)
+            ..cubicTo(11.5, 13.9, 12.9, 14.3, 13.9, 15),
+          stroke,
+        );
+        canvas.drawLine(const Offset(18, 13.5), const Offset(18, 19.5), stroke);
+        canvas.drawLine(const Offset(15, 16.5), const Offset(21, 16.5), stroke);
       case MullGlyph.arrowUpRight:
         canvas.drawLine(const Offset(7, 17), const Offset(17, 7), stroke);
         canvas.drawPath(

@@ -210,16 +210,7 @@ class _CreateGroupFlowState extends State<CreateGroupFlow> {
   /// Typing "Goa trip" and getting a plane without asking is the whole point:
   /// almost nobody would go looking for an icon picker, and almost everybody
   /// benefits from their groups being told apart at a glance.
-  String? get _suggestedIcon {
-    final name = _title.trim();
-    if (name.isEmpty) return null;
-    for (final word in name.toLowerCase().split(RegExp(r'[^a-z0-9]+'))) {
-      if (word.length < 3) continue;
-      final match = searchGroupIcons(word);
-      if (match.isNotEmpty) return match.first.key;
-    }
-    return null;
-  }
+  String? get _suggestedIcon => suggestGroupIcon(_title);
 
   @override
   Widget build(BuildContext context) {

@@ -132,9 +132,9 @@ void main() {
     expect(find.byKey(const ValueKey('home-tab-people')).hitTestable(), findsOneWidget);
   });
 
-  homeTest('with nothing yet, home says what Mull is for', (t) async {
+  homeTest('with nothing yet, home asks what you are splitting', (t) async {
     await pumpShell(t, MullStore.memory()..completeOnboarding(name: 'Bharat'));
-    expect(find.textContaining('Who paid.'), findsOneWidget);
-    expect(find.text('Start a group'), findsNothing, reason: 'the + starts one now');
+    expect(find.text('What are we\nsplitting first?'), findsOneWidget);
+    expect(find.text('Start a group'), findsNothing, reason: 'the tiles and the + start one');
   });
 }

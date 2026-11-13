@@ -19,6 +19,7 @@ import '../groups/recurring_sheets.dart';
 import '../friends_sheet.dart';
 import '../people_sheet.dart';
 import 'home_shell.dart';
+import 'empty_home.dart';
 import 'needs_you.dart';
 import 'people_tab.dart' show PersonLine;
 
@@ -104,8 +105,14 @@ class HomeTabPage extends StatelessWidget {
           ? [
               // A new user's first screen is this one, and the request is how
               // they get into the group they were added to.
-              requests,
-              _EmptyHome(onStart: onStart),
+              EmptyHome(
+                onStart: onStart,
+                requests: requests,
+                onOpenLedger: (id) {
+                  final g = store.groupById(id);
+                  if (g != null) open(g);
+                },
+              ),
             ]
           : [
               _Headline(people: people),
@@ -665,183 +672,9 @@ class _FriendRequestsCardState extends State<FriendRequestsCard> with WidgetsBin
   }
 }
 
-// --------------------------------------------------------------- empty state
-
-/// The first screen of an app with nothing in it.
-///
-/// A blank page with one button is the honest thing to draw and the wrong
-/// thing to show: it reads as an app that is broken or waiting for something.
-/// So this one says what Mull is for, offers the three groups people actually
-/// make, and starts one from a single tap on a chip.
-class _EmptyHome extends StatelessWidget {
-  const _EmptyHome({required this.onStart});
-
-  final Future<void> Function({String? name}) onStart;
-
-  @override
-  Widget build(BuildContext context) {
-    final c = context.c;
-    final store = context.store;
-    final name = store.profile.name.trim().split(' ').first;
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        _Rise(
-          step: 0,
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(Gutter.text, 40, Gutter.text, 0),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  name.isEmpty ? 'Nothing to settle yet' : 'Nothing to settle yet, $name',
-                  style: MullType.caption(c.ink3),
-                ),
-                const SizedBox(height: 16),
-                Text('Who paid.\nWho owes.\nSorted.', style: MullType.statement(c.ink, size: 40)),
-                const SizedBox(height: 20),
-                ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 320),
-                  child: Text(
-                    'Add what people pay as it happens. Mull keeps track of who owes '
-                    'whom, cancels debts that point both ways, and the money moves '
-                    'over UPI.',
-                    style: MullType.body(c.ink3),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-
-        _Rise(
-          step: 1,
-          child: Surface(
-            lift: Lift.focal,
-            radius: 28,
-            margin: const EdgeInsets.fromLTRB(Gutter.card, 42, Gutter.card, 0),
-            padding: const EdgeInsets.fromLTRB(22, 20, 22, 22),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Eyebrow('Start one in a tap', size: 10.5, tracking: .18),
-                const SizedBox(height: 16),
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: [
-                    for (final suggestion in const ['Flat', 'Trip', 'Dinner', 'Rent'])
-                      ChipButton(suggestion, onTap: () => onStart(name: suggestion)),
-                  ],
-                ),
-                const SizedBox(height: 18),
-                Text(
-                  'Pick one and Mull asks who is in it. Nothing is final: you can '
-                  'rename it or add people whenever.',
-                  style: MullType.caption(c.ink3),
-                ),
-              ],
-            ),
-          ),
-        ),
-
-        _Rise(
-          step: 2,
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(Gutter.card, 10, Gutter.card, 0),
-            child: _QuietDestination(
-              title: 'How settling up works',
-              detail: 'A minute',
-              onTap: () => showHowItWorks(context),
-            ),
-          ),
-        ),
-
-        _Rise(
-          step: 3,
-          child: const Footnote(
-            'Money never moves through Mull.\nPay over UPI, then say it went through.',
-            padding: EdgeInsets.fromLTRB(Gutter.text, 30, Gutter.text, 0),
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-/// Fades and lifts its child into place, a beat after the one above it.
-///
-/// Only used on screens that would otherwise arrive all at once with nothing
-/// on them. A list of real groups does not need choreography.
-class _Rise extends StatefulWidget {
-  const _Rise({required this.step, required this.child});
-
-  final int step;
-  final Widget child;
-
-  @override
-  State<_Rise> createState() => _RiseState();
-}
-
-class _RiseState extends State<_Rise> {
-  bool _in = false;
-
-  @override
-  void initState() {
-    super.initState();
-    Future.delayed(Duration(milliseconds: 90 + widget.step * 110), () {
-      if (mounted) setState(() => _in = true);
-    });
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final d = motion(context, const Duration(milliseconds: 520));
-    return AnimatedSlide(
-      offset: _in ? Offset.zero : const Offset(0, .06),
-      duration: d,
-      curve: Curves.easeOutCubic,
-      child: AnimatedOpacity(opacity: _in ? 1 : 0, duration: d, child: widget.child),
-    );
-  }
-}
-
-/// A row that goes somewhere. Flat, so it sinks back into the page.
-class _QuietDestination extends StatelessWidget {
-  const _QuietDestination({required this.title, this.detail, required this.onTap});
-
-  final String title;
-  final String? detail;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final c = context.c;
-    return Pressable(
-      onTap: onTap,
-      scale: .99,
-      child: Container(
-        padding: const EdgeInsets.fromLTRB(24, 20, 20, 20),
-        decoration: surfaceOf(c, Lift.flat, radius: BorderRadius.circular(24)),
-        child: Row(
-          children: [
-            Expanded(child: Text(title, style: MullType.cardTitle(c.ink2))),
-            if (detail != null) ...[
-              Text(detail!, style: MullType.caption(c.ink3)),
-              const SizedBox(width: 10),
-            ],
-            MullIcon(MullGlyph.chevronRight, size: 14, color: c.ink3, strokeWidth: 1.8),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
 /// Three beats: what Mull records, who confirms it, and where the money goes.
 ///
-/// Reachable from the empty home screen and from the profile sheet. The claim
+/// Reachable from the You tab. The claim
 /// and confirm loop is the one thing about Mull that is not obvious from
 /// looking at it, and an app that never explains it gets used as a calculator.
 Future<void> showHowItWorks(BuildContext context) => showMullSheet(

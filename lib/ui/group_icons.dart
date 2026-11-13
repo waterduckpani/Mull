@@ -121,6 +121,20 @@ final _byKey = {for (final i in groupIcons) i.key: i};
 /// for a key written by a future version of the app.
 IconData? groupGlyph(String? key) => key == null ? null : _byKey[key]?.glyph;
 
+/// The icon a new group called [name] gets without anyone asking: the first
+/// word of three letters or more that finds one. "Goa trip" gets the plane.
+///
+/// One function for the create-group flow and the empty home's tiles, so a
+/// tile always shows the icon its group will actually get.
+String? suggestGroupIcon(String name) {
+  for (final word in name.trim().toLowerCase().split(RegExp(r'[^a-z0-9]+'))) {
+    if (word.length < 3) continue;
+    final match = searchGroupIcons(word);
+    if (match.isNotEmpty) return match.first.key;
+  }
+  return null;
+}
+
 /// Matches on the key and on the words, in that order of preference, so typing
 /// "home" puts the house first rather than a hostel that happens to mention it.
 List<GroupIcon> searchGroupIcons(String query) {
