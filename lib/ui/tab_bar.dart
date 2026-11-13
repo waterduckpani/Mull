@@ -1,6 +1,9 @@
+import 'dart:math' as math;
+
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/physics.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
 
 import 'icons.dart';
@@ -65,8 +68,9 @@ class _MullTabBarState extends State<MullTabBar> with TickerProviderStateMixin {
   /// Lands on a tab with a little overshoot.
   static final _settle = SpringDescription.withDampingRatio(mass: 1, stiffness: 380, ratio: .74);
 
-  /// Keeps up with a finger without wobbling.
-  static final _follow = SpringDescription.withDampingRatio(mass: 1, stiffness: 1400, ratio: 1);
+  /// How quickly the highlight closes on a sliding finger, per second: under
+  /// it within a few frames, without jumping to it where the slide begins.
+  static const _catchUp = 35.0;
 
   /// Where the highlight is, counted in tabs: 0 is the first tab's centre, 3
   /// the last's, and 1.5 is under the +. Counted in tabs rather than pixels so
@@ -88,6 +92,18 @@ class _MullTabBarState extends State<MullTabBar> with TickerProviderStateMixin {
   double _downX = 0;
   bool _sliding = false;
 
+  /// Moves the highlight while a finger slides it. Its own ticker, because
+  /// the first version restarted a spring on every touch update, and a spring
+  /// that restarts every frame starts from rest every frame: under a moving
+  /// finger the highlight sat still and only the icons changed.
+  late final Ticker _slide = createTicker(_follow);
+  Duration _lastTick = Duration.zero;
+
+  /// Where the finger is, counted in tabs, and how fast the highlight was
+  /// going when it let go, for the spring that lands it.
+  double _finger = 0;
+  double _speed = 0;
+
   /// The tab the highlight is on while a finger has it, or has just let go
   /// of it and the screen has not opened it yet. Null when it is on [current].
   int? _held;
@@ -97,23 +113,37 @@ class _MullTabBarState extends State<MullTabBar> with TickerProviderStateMixin {
     super.didUpdateWidget(old);
     if (widget.current != old.current && _pointer == null) {
       _held = null;
-      _glide(widget.current.toDouble(), _settle);
+      _glide(widget.current.toDouble());
     }
   }
 
   @override
   void dispose() {
+    _slide.dispose();
     _at.dispose();
     _press.dispose();
     super.dispose();
   }
 
-  void _glide(double to, SpringDescription spring) {
-    if (MediaQuery.maybeDisableAnimationsOf(context) ?? false) {
+  bool get _still => MediaQuery.maybeDisableAnimationsOf(context) ?? false;
+
+  void _glide(double to, {double? velocity}) {
+    if (_still) {
       _at.value = to;
       return;
     }
-    _at.animateWith(SpringSimulation(spring, _at.value, to, _at.velocity));
+    _at.animateWith(SpringSimulation(_settle, _at.value, to, velocity ?? _at.velocity));
+  }
+
+  void _follow(Duration elapsed) {
+    final dt = (elapsed - _lastTick).inMicroseconds / Duration.microsecondsPerSecond;
+    _lastTick = elapsed;
+    if (dt <= 0) return;
+    final from = _at.value;
+    final to = from + (_finger - from) * (1 - math.exp(-dt * _catchUp));
+    _at.value = to;
+    _speed = (to - from) / dt;
+    _hold(to.round());
   }
 
   /// Pixels across the bar for a position counted in tabs. Straight lines
@@ -156,7 +186,7 @@ class _MullTabBarState extends State<MullTabBar> with TickerProviderStateMixin {
     // lifts: waiting for the tap to finish makes the bar feel slow.
     final i = _tabsAt(_downX).round();
     _hold(i);
-    _glide(i.toDouble(), _settle);
+    _glide(i.toDouble());
   }
 
   void _move(PointerMoveEvent e) {
@@ -164,27 +194,37 @@ class _MullTabBarState extends State<MullTabBar> with TickerProviderStateMixin {
     final x = e.localPosition.dx;
     if (!_sliding && (x - _downX).abs() < kTouchSlop / 3) return;
     _sliding = true;
-    final at = _tabsAt(x);
-    _glide(at, _follow);
-    _hold(at.round());
+    _finger = _tabsAt(x);
+    if (_still) {
+      _at.value = _finger;
+      _hold(_finger.round());
+    } else if (!_slide.isActive) {
+      _lastTick = Duration.zero;
+      _speed = 0;
+      _slide.start();
+    }
   }
 
   void _up(PointerUpEvent e) {
     if (e.pointer != _pointer) return;
     _pointer = null;
+    _slide.stop();
     _press.reverse();
     final i = _tabsAt(e.localPosition.dx).round();
     _hold(i);
-    _glide(i.toDouble(), _settle);
+    // Carry the slide's speed into the landing, so a flick lands with a
+    // little overshoot instead of stopping dead and then springing.
+    _glide(i.toDouble(), velocity: _sliding ? _speed : null);
     if (i != widget.current) widget.onSelect(i);
   }
 
   void _cancel(PointerCancelEvent e) {
     if (e.pointer != _pointer) return;
     _pointer = null;
+    _slide.stop();
     _press.reverse();
     setState(() => _held = null);
-    _glide(widget.current.toDouble(), _settle);
+    _glide(widget.current.toDouble());
   }
 
   @override

@@ -77,6 +77,34 @@ void main() {
     expect(picked, 3);
   });
 
+  barTest('the highlight travels under a sliding finger, every frame of the way', (t) async {
+    await pump(t);
+    Offset pill() => t.getCenter(
+      find.byWidgetPredicate(
+        (w) =>
+            w is DecoratedBox &&
+            w.decoration is BoxDecoration &&
+            (w.decoration as BoxDecoration).borderRadius == BorderRadius.circular(24),
+      ),
+    );
+    final from = t.getCenter(find.bySemanticsLabel('Home, tab 1 of 4'));
+    final to = t.getCenter(find.bySemanticsLabel('You, tab 4 of 4'));
+    final finger = await t.startGesture(from);
+    // A touch update every frame, as a real finger sends them. The first bar
+    // restarted its spring on each one and the highlight never left Home.
+    for (var frame = 1; frame <= 40; frame++) {
+      final at = Offset.lerp(from, to, frame / 40)!;
+      await finger.moveTo(at);
+      await t.pump(const Duration(milliseconds: 16));
+      if (frame > 6) {
+        expect((pill().dx - at.dx).abs(), lessThan(24), reason: 'frame $frame: the highlight fell behind the finger');
+      }
+    }
+    await finger.up();
+    await t.pumpAndSettle();
+    expect(pill().dx, closeTo(to.dx, .5), reason: 'it lands on the tab let go over');
+  });
+
   barTest('letting go over the + lands on the nearer tab', (t) async {
     int? picked;
     await pump(t, onSelect: (i) => picked = i);
