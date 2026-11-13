@@ -125,11 +125,17 @@ void main() {
     await dismissSheet(t);
 
     // ---- a schedule whose turn has come: behind the claim in the stack
+    // Below Who owes who since 2b71665, so scrolled up from behind the bar
+    // first: ensureVisible brings it to the top of the page.
     final more = find.textContaining(RegExp(r'^\d+ more$'));
     if (more.evaluate().isNotEmpty) {
+      await t.ensureVisible(more.first);
+      await settle(t);
       await t.tap(more.first);
       await settle(t);
     }
+    await t.ensureVisible(find.text('Open it').first);
+    await settle(t);
     await t.tap(find.text('Open it').hitTestable().first);
     await settle(t);
     await shot(t, '03-recurring-due');
