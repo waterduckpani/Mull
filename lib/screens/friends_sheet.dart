@@ -21,54 +21,60 @@ import '../ui/sheet.dart';
 import '../ui/tokens.dart';
 import '../ui/widgets.dart';
 
-/// [onOpenLedger] is how a tapped friend gets you to the ledger with them.
-/// Supplied by the caller because this sheet sits above the navigator its
-/// screens live on, and pushing from here lands the group outside the shell.
-Future<void> showFriendsSheet(
-  BuildContext context, {
-  void Function(String groupId)? onOpenLedger,
-}) => showMullSheet(
-  context,
-  height: 720,
-  builder: (_) => _FriendsSheet(onOpenLedger: onOpenLedger),
-);
-
-class _FriendsSheet extends StatefulWidget {
-  const _FriendsSheet({this.onOpenLedger});
-
-  final void Function(String groupId)? onOpenLedger;
-
-  @override
-  State<_FriendsSheet> createState() => _FriendsSheetState();
-}
-
-class _FriendsSheetState extends State<_FriendsSheet> {
-  void Function(String groupId)? get openLedger => widget.onOpenLedger;
-
-  List<Friend>? _friends;
-  List<({String userId, String name})> _blocked = const [];
-  bool _busy = false;
+/// What every list of your friends can do to one: load them, accept, decline,
+/// remove, report and block, and unblock.
+///
+/// It used to be the friends sheet's, which meant seeing your friends took a
+/// tap on a row called Friends. They are on the People tab now, and this is
+/// the part of the sheet that came with them.
+mixin FriendActions<T extends StatefulWidget> on State<T> {
+  /// Null until the first load comes back.
+  List<Friend>? friends;
+  List<({String userId, String name})> blocked = const [];
+  bool friendsBusy = false;
 
   @override
   void initState() {
     super.initState();
-    _load();
+    FriendsService.changes.addListener(loadFriends);
+    loadFriends();
   }
 
-  Future<void> _load() async {
-    final (friends, blocked) = await (FriendsService.list(), FriendsService.blocked()).wait;
-    if (mounted) {
-      setState(() {
-        _friends = friends;
-        _blocked = blocked;
-      });
+  @override
+  void dispose() {
+    FriendsService.changes.removeListener(loadFriends);
+    super.dispose();
+  }
+
+  Future<void> loadFriends() async {
+    final (list, blocks) = await (FriendsService.list(), FriendsService.blocked()).wait;
+    if (!mounted) return;
+    setState(() {
+      friends = list;
+      blocked = blocks;
+    });
+  }
+
+  Future<void> actOnFriend(Future<FriendsResult> Function() action) async {
+    if (friendsBusy) return;
+    setState(() => friendsBusy = true);
+    final result = await action();
+    if (!mounted) return;
+    setState(() => friendsBusy = false);
+    if (result.isOk) {
+      HapticFeedback.mediumImpact();
+      // An accepted request can hand over seats in groups, so the ledger may
+      // have just grown. The list itself reloads off FriendsService.changes.
+      unawaited(context.readStore.pullNow());
+    } else if (result.error != null) {
+      Toast.show(context, result.error!);
     }
   }
 
   /// Remove, report or block. Report and block only for someone with an
   /// account: an invite to an address nobody has signed up with has nobody
   /// behind it to report.
-  Future<void> _more(Friend friend) async {
+  Future<void> moreForFriend(Friend friend) async {
     final userId = friend.userId;
     final removeLabel = switch (friend.state) {
       FriendState.friends => 'Remove friend',
@@ -112,15 +118,12 @@ class _FriendsSheetState extends State<_FriendsSheet> {
     if (!mounted || choice == null) return;
     switch (choice) {
       case 'remove':
-        await _act(() => FriendsService.remove(friend.friendshipId));
+        await actOnFriend(() => FriendsService.remove(friend.friendshipId));
       case 'report' when userId != null:
         final sent = await showReportSheet(context, name: friend.label, userId: userId);
-        if (sent == true) {
-          if (mounted) Toast.show(context, 'Thanks. We will look at it.');
-          await _load();
-        }
+        if (sent == true && mounted) Toast.show(context, 'Thanks. We will look at it.');
       case 'block' when userId != null:
-        if (await _confirmBlock(friend.label)) await _act(() => FriendsService.block(userId));
+        if (await _confirmBlock(friend.label)) await actOnFriend(() => FriendsService.block(userId));
     }
   }
 
@@ -152,221 +155,115 @@ class _FriendsSheetState extends State<_FriendsSheet> {
     );
     return ok == true;
   }
-
-  Future<void> _add() async {
-    final sent = await showAddFriendSheet(context);
-    if (sent == true) await _load();
-  }
-
-  Future<void> _act(Future<FriendsResult> Function() action) async {
-    if (_busy) return;
-    setState(() => _busy = true);
-    final result = await action();
-    if (!mounted) return;
-    setState(() => _busy = false);
-    if (result.isOk) {
-      HapticFeedback.mediumImpact();
-      // An accepted request can hand over seats in groups, so the ledger may
-      // have just grown.
-      unawaited(context.readStore.pullNow());
-      await _load();
-    } else if (mounted && result.error != null) {
-      Toast.show(context, result.error!);
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final c = context.c;
-    final friends = _friends;
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        const SheetHeader('Friends'),
-        Expanded(
-          child: friends == null
-              ? const Center(child: CircularProgressIndicator(strokeWidth: 2))
-              : friends.isEmpty && _blocked.isEmpty
-              ? _Empty(onAdd: _add)
-              : ListView(
-                  physics: const BouncingScrollPhysics(),
-                  padding: const EdgeInsets.fromLTRB(30, 4, 30, 16),
-                  children: [
-                    Text(
-                      'Adding a friend to a group brings their name and UPI ID '
-                      'with them, straight from their account.',
-                      style: ranade(13, height: 1.6, color: c.ink3),
-                    ),
-                    const SizedBox(height: 20),
-                    for (final friend in friends) ...[
-                      _FriendRow(
-                        friend: friend,
-                        busy: _busy,
-                        onAccept: () => _act(() => FriendsService.accept(friend.friendshipId)),
-                        onRemove: () => _act(() => FriendsService.remove(friend.friendshipId)),
-                        // Every row, so a request you sent can be taken back whether or not
-                        // the address has an account. Report and block need one.
-                        onMore: () => _more(friend),
-                      ),
-                      const SizedBox(height: 4),
-                    ],
-                    if (_blocked.isNotEmpty) ...[
-                      const SizedBox(height: 28),
-                      const Eyebrow('Blocked'),
-                      const SizedBox(height: 8),
-                      for (final b in _blocked)
-                        Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 10),
-                          child: Row(
-                            children: [
-                              Expanded(child: Text(b.name, style: ranade(15, color: c.ink2))),
-                              Pressable(
-                                onTap: _busy ? null : () => _act(() => FriendsService.unblock(b.userId)),
-                                child: Padding(
-                                  padding: const EdgeInsets.all(6),
-                                  child: Text('Unblock', style: ranade(12.5, color: c.ink3)),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                    ],
-                  ],
-                ),
-        ),
-        Padding(
-          padding: const EdgeInsets.fromLTRB(20, 8, 20, 30),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              PillButton('Add a friend', onTap: _add),
-              const SizedBox(height: 8),
-              SecondaryButton('Invite someone to Mull', onTap: () => inviteToMull(context)),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
 }
 
-class _FriendRow extends StatelessWidget {
-  const _FriendRow({
+/// One friend, one request, or one request you sent.
+class FriendRow extends StatelessWidget {
+  const FriendRow({
+    super.key,
     required this.friend,
     required this.busy,
     required this.onAccept,
-    required this.onRemove,
-    this.onMore,
+    required this.onMore,
+    this.note,
+    this.onTap,
   });
 
   final Friend friend;
   final bool busy;
   final VoidCallback onAccept;
-  final VoidCallback onRemove;
 
-  /// Remove, report and block, for someone with an account. Null for an
-  /// invite nobody has claimed, which keeps a plain Cancel.
-  final VoidCallback? onMore;
+  /// Remove or cancel, and report and block for someone with an account.
+  final VoidCallback onMore;
+
+  /// The line under the name. Defaults to what the request is waiting on, or
+  /// the friend's UPI ID.
+  final String? note;
+
+  /// Tapping the row itself; the ⋯ when null.
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
     final c = context.c;
+    final waiting = friend.state == FriendState.outgoing;
 
-    final (note, action) = switch (friend.state) {
-      FriendState.incoming => ('Wants to be friends', 'Accept'),
-      // One wording whether or not the address has an account. Saying which
-      // told anyone with a list of emails who was on Mull; the server no
-      // longer says either, until they answer.
-      FriendState.outgoing => ('Asked, waiting on them', null),
-      FriendState.friends => (friend.upiId ?? 'No UPI ID on their account yet', null),
-    };
+    final line =
+        note ??
+        switch (friend.state) {
+          // Short, because Accept and ⋯ share the line, and the heading above
+          // a request already says what it is.
+          FriendState.incoming => 'New request',
+          // One wording whether or not the address has an account. Saying
+          // which told anyone with a list of emails who was on Mull; the
+          // server no longer says either, until they answer.
+          FriendState.outgoing => 'Asked, waiting on them',
+          FriendState.friends => friend.upiId ?? 'No UPI ID on their account yet',
+        };
 
-    return Semantics(
-      container: true,
+    return Pressable(
+      onTap: busy ? null : (onTap ?? onMore),
+      scale: .99,
+      semanticLabel: '${friend.label}, $line',
       child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 10),
+        padding: const EdgeInsets.symmetric(vertical: 12),
         child: Row(
           children: [
-            Container(
-              width: 38,
-              height: 38,
-              alignment: Alignment.center,
-              decoration: BoxDecoration(color: c.quiet, shape: BoxShape.circle),
-              child: Text(friend.initials, style: excon(14, color: c.ink)),
+            ExcludeSemantics(
+              child: Opacity(
+                opacity: waiting ? .6 : 1,
+                child: Container(
+                  width: 38,
+                  height: 38,
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    color: c.quiet,
+                    shape: BoxShape.circle,
+                    // A ring for someone waiting on your answer, the way the
+                    // circles on an empty Home show it.
+                    border: friend.state == FriendState.incoming ? Border.all(color: c.ink, width: 1.5) : null,
+                  ),
+                  child: Text(friend.initials, style: MullType.caption(c.ink2, size: 12.5)),
+                ),
+              ),
             ),
-            const SizedBox(width: 14),
+            const SizedBox(width: 13),
             Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    friend.label,
-                    style: ranade(15, color: c.ink),
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    note,
-                    style: ranade(12, color: c.ink3),
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ],
+              child: ExcludeSemantics(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      friend.label,
+                      style: ranade(15.5, color: waiting ? c.ink2 : c.ink),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      line,
+                      style: MullType.caption(c.ink3, size: 11.5),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
+                ),
               ),
             ),
-            if (action != null) ...[
-              ChipButton(action, onTap: busy ? null : onAccept),
-              const SizedBox(width: 8),
+            if (friend.state == FriendState.incoming) ...[
+              const SizedBox(width: 10),
+              InlineButton('Accept', height: 36, onTap: busy ? null : onAccept),
             ],
-            if (onMore != null)
-              Pressable(
-                onTap: busy ? null : onMore,
-                semanticLabel: 'More for ${friend.label}',
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(10, 6, 2, 6),
-                  child: Icon(Icons.more_horiz, size: 22, color: c.ink3),
-                ),
-              )
-            else
-              Pressable(
-                onTap: busy ? null : onRemove,
-                child: Padding(
-                  padding: const EdgeInsets.all(6),
-                  child: Text('Cancel', style: ranade(12.5, color: c.ink3)),
-                ),
+            Pressable(
+              onTap: busy ? null : onMore,
+              semanticLabel: 'More for ${friend.label}',
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(12, 8, 2, 8),
+                child: Icon(Icons.more_horiz, size: 22, color: c.ink3),
               ),
+            ),
           ],
         ),
-      ),
-    );
-  }
-}
-
-class _Empty extends StatelessWidget {
-  const _Empty({required this.onAdd});
-
-  final VoidCallback onAdd;
-
-  @override
-  Widget build(BuildContext context) {
-    final c = context.c;
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(30, 0, 30, 20),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Text('Nobody yet.', style: excon(26, tracking: -.02, color: c.ink)),
-          const SizedBox(height: 10),
-          Text(
-            'Add the people you actually split things with. Once you are '
-            'connected, putting them in a group brings their name and UPI ID '
-            'with them. No more typing someone else\'s payment details and '
-            'hoping you got it right.',
-            style: ranade(14, height: 1.7, color: c.ink3),
-          ),
-        ],
       ),
     );
   }

@@ -1,6 +1,7 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:mull/data/remote/friends_service.dart';
 import 'package:mull/data/store.dart';
 import 'package:mull/screens/home/home_shell.dart';
 import 'package:mull/screens/home/needs_you.dart';
@@ -136,5 +137,18 @@ void main() {
     await pumpShell(t, MullStore.memory()..completeOnboarding(name: 'Bharat'));
     expect(find.text('What are we\nsplitting first?'), findsOneWidget);
     expect(find.text('Start a group'), findsNothing, reason: 'the tiles and the + start one');
+  });
+
+  homeTest('a friend request\'s See goes to People, where Accept is', (t) async {
+    FriendsService.debugFriends = const [
+      Friend(friendshipId: 'f1', state: FriendState.incoming, userId: 'kabir', name: 'Kabir'),
+    ];
+    addTearDown(() => FriendsService.debugFriends = null);
+    await pumpShell(t, MullStore.memory()..loadSample());
+    expect(find.text('Kabir wants to split with you'), findsOneWidget);
+    await t.tap(find.text('See'));
+    await t.pumpAndSettle();
+    expect(find.byKey(const ValueKey('home-tab-people')).hitTestable(), findsOneWidget);
+    expect(find.text('Accept').hitTestable(), findsOneWidget);
   });
 }

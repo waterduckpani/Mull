@@ -10,6 +10,7 @@ import '../../ui/page.dart';
 import '../../ui/tokens.dart';
 import '../../ui/widgets.dart';
 import '../friends_sheet.dart';
+import 'home_shell.dart';
 
 /// Home before your first group.
 ///
@@ -21,15 +22,13 @@ import '../friends_sheet.dart';
 /// in a settings list, because Mull does nothing until the people you split
 /// with are on it.
 class EmptyHome extends StatelessWidget {
-  const EmptyHome({super.key, required this.onStart, required this.requests, this.onOpenLedger});
+  const EmptyHome({super.key, required this.onStart, required this.requests});
 
   /// Starts a group, named when a tile was tapped.
   final Future<void> Function({String? name}) onStart;
 
   /// The "wants to split with you" card, under the people it is about.
   final Widget requests;
-
-  final void Function(String groupId)? onOpenLedger;
 
   /// What people actually split, in the order they split it.
   static const starters = ['Flat', 'Trip', 'Dinner', 'Night out', 'Office'];
@@ -52,7 +51,7 @@ class EmptyHome extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        _Rise(step: 0, child: PeopleRow(onOpenLedger: onOpenLedger)),
+        const _Rise(step: 0, child: PeopleRow()),
         requests,
         _Rise(
           step: 1,
@@ -160,11 +159,10 @@ class _StartTile extends StatelessWidget {
 /// Someone who has asked to split with you wears a ring, the way an unseen
 /// story does. Someone you have asked and who has not answered is shown
 /// faded. The seats are there so that two buttons on their own do not look
-/// like the whole of it; tapping one adds a friend.
+/// like the whole of it; tapping one adds a friend. Tapping a person goes to
+/// People, where your friends are listed.
 class PeopleRow extends StatefulWidget {
-  const PeopleRow({super.key, this.onOpenLedger});
-
-  final void Function(String groupId)? onOpenLedger;
+  const PeopleRow({super.key});
 
   /// Circles shown before the row runs off the edge, counting the two
   /// buttons: enough that the last one is cut, which says it scrolls.
@@ -181,11 +179,13 @@ class _PeopleRowState extends State<PeopleRow> with WidgetsBindingObserver {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    FriendsService.changes.addListener(_load);
     _load();
   }
 
   @override
   void dispose() {
+    FriendsService.changes.removeListener(_load);
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
@@ -207,15 +207,9 @@ class _PeopleRowState extends State<PeopleRow> with WidgetsBindingObserver {
     setState(() => _people = [...all]..sort((a, b) => rank(a).compareTo(rank(b))));
   }
 
-  Future<void> _add() async {
-    final sent = await showAddFriendSheet(context);
-    if (sent == true) await _load();
-  }
+  Future<void> _add() => showAddFriendSheet(context);
 
-  Future<void> _open() async {
-    await showFriendsSheet(context, onOpenLedger: widget.onOpenLedger);
-    await _load();
-  }
+  void _open() => HomeShellScope.maybeOf(context)?.select(HomeTab.people);
 
   @override
   Widget build(BuildContext context) {

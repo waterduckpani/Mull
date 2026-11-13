@@ -1,6 +1,7 @@
 import 'package:flutter/cupertino.dart';
 
 import '../../core/money.dart';
+import '../../data/remote/friends_service.dart';
 import '../../data/store.dart';
 import '../../ui/icons.dart';
 import '../../ui/page.dart';
@@ -9,14 +10,15 @@ import '../../ui/widgets.dart';
 import '../friends_sheet.dart';
 import '../groups/group_screen.dart';
 import '../people_sheet.dart';
-import 'home_tab.dart' show FriendRequestsCard;
 
-/// The People tab: who you pay, and who pays you.
+/// The People tab: who you pay, who pays you, and your friends.
 ///
 /// Netted per person across every ledger you share — the trip and the flat
 /// are one row for Sahil, in one direction — with Pay or Nudge right on the
-/// row, because that is the decision this list exists for. Friends lives
-/// here too: the requests, and a way in to add, invite or block.
+/// row, because that is the decision this list exists for. Your friends are
+/// listed under that. They used to be behind a row called Friends that opened
+/// a sheet, so seeing who your friends were took a tap on something that
+/// looked like a setting.
 class PeopleTabPage extends StatefulWidget {
   const PeopleTabPage({super.key, this.bottomInset = 0});
 
@@ -27,7 +29,7 @@ class PeopleTabPage extends StatefulWidget {
   State<PeopleTabPage> createState() => _PeopleTabPageState();
 }
 
-class _PeopleTabPageState extends State<PeopleTabPage> {
+class _PeopleTabPageState extends State<PeopleTabPage> with FriendActions {
   bool _showSquare = false;
 
   @override
@@ -39,40 +41,78 @@ class _PeopleTabPageState extends State<PeopleTabPage> {
     final owesYou = people.where((s) => !s.isSquare && s.theyOweYou).toList();
     final square = people.where((s) => s.isSquare).toList();
 
+    final everyone = friends;
+    final requests = [...?everyone?.where((f) => f.state == FriendState.incoming)];
+    final yours = [...?everyone?.where((f) => f.state != FriendState.incoming)];
+    final accepted = yours.where((f) => f.state == FriendState.friends).length;
+
     void open(String groupId) {
       if (store.groupById(groupId) == null) return;
       Navigator.of(context).push(CupertinoPageRoute(builder: (_) => GroupScreen(groupId: groupId)));
     }
 
+    // Where the two of you split, so a friend is more than a name.
+    String together(Friend f) {
+      final shared = [
+        for (final g in store.groups)
+          if (f.userId != null && g.seated.any((m) => m.userId == f.userId))
+            g.isDirect ? 'just the two of you' : g.title,
+      ];
+      if (shared.isEmpty) return 'No groups together yet';
+      return shared.length <= 2 ? shared.join(', ') : '${shared.take(2).join(', ')} and ${shared.length - 2} more';
+    }
+
+    // A friend you share a ledger with opens where you stand, like the rows
+    // above; anyone else opens what you can do about the friendship.
+    Future<void> tapFriend(Friend f) async {
+      final standing = people.where((s) => f.userId != null && s.member.userId == f.userId).firstOrNull;
+      if (standing == null) return moreForFriend(f);
+      final groupId = await showPersonSheet(context, standing);
+      if (groupId != null) open(groupId);
+    }
+
+    Widget eyebrow(String text) =>
+        Eyebrow(text, size: 10.5, tracking: .18, padding: const EdgeInsets.fromLTRB(Gutter.text, 30, Gutter.text, 12));
+
+    Widget card(List<Widget> rows, {Lift lift = Lift.card}) => Surface(
+      lift: lift,
+      radius: 26,
+      margin: const EdgeInsets.symmetric(horizontal: Gutter.card),
+      padding: const EdgeInsets.fromLTRB(18, 4, 14, 4),
+      child: CardRows(children: rows),
+    );
+
+    FriendRow friendRow(Friend f) => FriendRow(
+      key: ValueKey(f.friendshipId),
+      friend: f,
+      busy: friendsBusy,
+      note: f.state == FriendState.friends ? together(f) : null,
+      onTap: f.state == FriendState.friends ? () => tapFriend(f) : null,
+      onAccept: () => actOnFriend(() => FriendsService.accept(f.friendshipId)),
+      onMore: () => moreForFriend(f),
+    );
+
     Widget section(String title, List<Standing> list, {required String action}) => Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Eyebrow(title, size: 10.5, tracking: .18, padding: const EdgeInsets.fromLTRB(Gutter.text, 30, Gutter.text, 12)),
-        Surface(
-          lift: Lift.card,
-          radius: 26,
-          margin: const EdgeInsets.symmetric(horizontal: Gutter.card),
-          padding: const EdgeInsets.fromLTRB(18, 4, 14, 4),
-          child: CardRows(
-            children: [
-              for (final s in list)
-                PersonLine(
-                  key: ValueKey(s.member.id),
-                  standing: s,
-                  action: action,
-                  onAction: () => action == 'Pay' ? settleWithPerson(context, s) : nudgePerson(context, s),
-                  onOpenLedger: open,
-                ),
-            ],
-          ),
-        ),
+        eyebrow(title),
+        card([
+          for (final s in list)
+            PersonLine(
+              key: ValueKey(s.member.id),
+              standing: s,
+              action: action,
+              onAction: () => action == 'Pay' ? settleWithPerson(context, s) : nudgePerson(context, s),
+              onOpenLedger: open,
+            ),
+        ]),
       ],
     );
 
     return MullPage(
       bottomInset: widget.bottomInset,
       glow: const GlowSpec(size: 430, top: -160, right: -150),
-      onRefresh: store.pullNow,
+      onRefresh: () => Future.wait([store.pullNow(), loadFriends()]),
       children: [
         Padding(
           padding: const EdgeInsets.fromLTRB(Gutter.text, 22, Gutter.card, 0),
@@ -86,17 +126,29 @@ class _PeopleTabPageState extends State<PeopleTabPage> {
           ),
         ),
         const SizedBox(height: 8),
-        FriendRequestsCard(onOpenLedger: open),
-        if (people.isEmpty)
-          Padding(
-            padding: const EdgeInsets.fromLTRB(Gutter.text, 24, Gutter.text, 0),
-            child: Text(
-              'Everyone you split with shows up here, with what is owed between you across every group.',
-              style: MullType.body(c.ink3),
-            ),
-          ),
+        // Waiting on you, so first.
+        if (requests.isNotEmpty) ...[
+          eyebrow('Wants to split with you · ${requests.length}'),
+          card([for (final f in requests) friendRow(f)], lift: Lift.focal),
+        ],
         if (youOwe.isNotEmpty) section('You owe', youOwe, action: 'Pay'),
         if (owesYou.isNotEmpty) section('Owes you', owesYou, action: 'Nudge'),
+        if (everyone != null) ...[
+          eyebrow(accepted == 0 ? 'Friends' : 'Friends · $accepted'),
+          card([
+            if (yours.isEmpty)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(4, 14, 4, 12),
+                child: Text(
+                  'Nobody yet. Add the people you split with: their name and UPI ID '
+                  'come from their own account, so nobody types anyone else\'s.',
+                  style: MullType.body(c.ink3),
+                ),
+              ),
+            for (final f in yours) friendRow(f),
+            _InviteLine(onTap: () => inviteToMull(context)),
+          ]),
+        ],
         if (square.isNotEmpty) ...[
           Pressable(
             onTap: () => setState(() => _showSquare = !_showSquare),
@@ -125,18 +177,75 @@ class _PeopleTabPageState extends State<PeopleTabPage> {
               ),
             ),
         ],
-        const SizedBox(height: 26),
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: Gutter.card),
-          child: FieldRow(
-            label: 'Friends',
-            value: 'Add, invite, block',
-            onTap: () => showFriendsSheet(context, onOpenLedger: open),
-            trailing: MullIcon(MullGlyph.chevronRight, size: 14, color: c.ink2, strokeWidth: 1.8),
-          ),
-        ),
+        if (blocked.isNotEmpty) ...[
+          eyebrow('Blocked'),
+          card(lift: Lift.flat, [
+            for (final b in blocked)
+              Padding(
+                key: ValueKey('blocked-${b.userId}'),
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                child: Row(
+                  children: [
+                    Expanded(child: Text(b.name, style: ranade(15, color: c.ink2))),
+                    InlineButton(
+                      'Unblock',
+                      height: 34,
+                      filled: false,
+                      onTap: friendsBusy ? null : () => actOnFriend(() => FriendsService.unblock(b.userId)),
+                    ),
+                  ],
+                ),
+              ),
+          ]),
+        ],
         const SizedBox(height: 12),
       ],
+    );
+  }
+}
+
+/// The last line of Friends: for the people who are not on Mull yet.
+class _InviteLine extends StatelessWidget {
+  const _InviteLine({required this.onTap});
+
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.c;
+    return Pressable(
+      onTap: onTap,
+      scale: .99,
+      semanticLabel: 'Invite someone to Mull',
+      child: ExcludeSemantics(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 12),
+          child: Row(
+            children: [
+              Container(
+                width: 38,
+                height: 38,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(shape: BoxShape.circle, color: c.pill),
+                child: MullIcon(MullGlyph.invite, size: 18, color: c.pillInk, strokeWidth: 1.7),
+              ),
+              const SizedBox(width: 13),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('Invite someone to Mull', style: ranade(15.5, color: c.ink)),
+                    const SizedBox(height: 2),
+                    Text('Send them the app, wherever you chat', style: MullType.caption(c.ink3, size: 11.5)),
+                  ],
+                ),
+              ),
+              MullIcon(MullGlyph.chevronRight, size: 14, color: c.ink3, strokeWidth: 1.8),
+              const SizedBox(width: 4),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }

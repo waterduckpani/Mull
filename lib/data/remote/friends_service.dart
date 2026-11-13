@@ -71,12 +71,28 @@ class FriendsResult {
 }
 
 class FriendsService {
+  /// Goes up whenever this phone changes who your friends are: a request
+  /// sent, accepted, declined or cancelled, someone removed, blocked or
+  /// unblocked. Friends show up on Home, People and in pickers, and each one
+  /// listens to this instead of keeping its own idea of who is there.
+  static final changes = ValueNotifier<int>(0);
+
+  static FriendsResult _changed(FriendsResult result) {
+    if (result.isOk) changes.value++;
+    return result;
+  }
+
+  /// Stands in for the server in widget tests, which have no account.
+  @visibleForTesting
+  static List<Friend>? debugFriends;
+
   /// Everyone you are connected to, in either direction and at any stage.
   ///
   /// A friendship does not know which side you are on: you might be the
   /// requester on one row and the addressee on the next. friend_list() works
   /// that out server-side and returns the other person as `other_*`.
   static Future<List<Friend>> list() async {
+    if (debugFriends case final friends?) return friends;
     final me = Backend.user?.id;
     if (me == null) return const [];
     try {
@@ -149,7 +165,7 @@ class FriendsService {
         params: {'target_email': address},
       );
       if (outcome == 'already') return const FriendsResult.failed("You're already connected.");
-      return const FriendsResult.ok();
+      return _changed(const FriendsResult.ok());
     } on PostgrestException catch (e) {
       debugPrint('mull: friend request failed ($e)');
       return FriendsResult.failed(
@@ -173,7 +189,7 @@ class FriendsService {
     try {
       await Backend.client.rpc('accept_friend_request', params: {'friendship': friendshipId});
       await AuthService.claimSeats();
-      return const FriendsResult.ok();
+      return _changed(const FriendsResult.ok());
     } catch (e) {
       debugPrint('mull: accept failed ($e)');
       return const FriendsResult.failed("Couldn't accept that. Try again.");
@@ -184,7 +200,7 @@ class FriendsService {
   static Future<FriendsResult> remove(String friendshipId) async {
     try {
       await Backend.client.from('friendships').delete().eq('id', friendshipId);
-      return const FriendsResult.ok();
+      return _changed(const FriendsResult.ok());
     } catch (e) {
       debugPrint('mull: remove friend failed ($e)');
       return const FriendsResult.failed("Couldn't do that. Try again.");
@@ -197,7 +213,7 @@ class FriendsService {
   static Future<FriendsResult> block(String userId) async {
     try {
       await Backend.client.rpc('block_user', params: {'target': userId});
-      return const FriendsResult.ok();
+      return _changed(const FriendsResult.ok());
     } catch (e) {
       debugPrint('mull: block failed ($e)');
       return const FriendsResult.failed("Couldn't block them. Try again.");
@@ -207,7 +223,7 @@ class FriendsService {
   static Future<FriendsResult> unblock(String userId) async {
     try {
       await Backend.client.rpc('unblock_user', params: {'target': userId});
-      return const FriendsResult.ok();
+      return _changed(const FriendsResult.ok());
     } catch (e) {
       debugPrint('mull: unblock failed ($e)');
       return const FriendsResult.failed("Couldn't unblock them. Try again.");

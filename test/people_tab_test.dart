@@ -1,6 +1,7 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:mull/data/remote/friends_service.dart';
 import 'package:mull/data/store.dart';
 import 'package:mull/screens/home/home_shell.dart';
 import 'package:mull/ui/tokens.dart';
@@ -32,6 +33,7 @@ void main() {
       await body(t);
       await t.pump(const Duration(seconds: 6));
     } finally {
+      FriendsService.debugFriends = null;
       await t.binding.setSurfaceSize(null);
     }
   });
@@ -78,12 +80,42 @@ void main() {
     expect(onTab(find.text('Ananya')), findsOneWidget);
   });
 
-  peopleTest('Friends opens the friends sheet', (t) async {
+  peopleTest('your friends are on the tab, with where you split', (t) async {
+    final store = twoPeople();
+    store.groups.firstWhere((g) => g.name == 'Dinner').members[1].userId = 'dev';
+    FriendsService.debugFriends = const [
+      Friend(friendshipId: 'f1', state: FriendState.friends, userId: 'dev', name: 'Dev Rao'),
+      Friend(friendshipId: 'f2', state: FriendState.friends, userId: 'riya', name: 'Riya Shah'),
+    ];
+    await openPeopleTab(t, store);
+    await t.scrollUntilVisible(onTab(find.text('Riya Shah')), 200, scrollable: onTab(find.byType(Scrollable)).first);
+    expect(onTab(find.text('FRIENDS · 2')), findsOneWidget);
+    expect(onTab(find.text('Dev Rao')), findsOneWidget);
+    expect(onTab(find.text('Dinner')), findsWidgets, reason: 'the group Dev and you share');
+    expect(onTab(find.text('No groups together yet')), findsOneWidget, reason: 'Riya');
+    expect(onTab(find.text('Friends')), findsNothing, reason: 'no row to tap through to them');
+  });
+
+  peopleTest('a request is at the top, with Accept on the row', (t) async {
+    FriendsService.debugFriends = const [
+      Friend(friendshipId: 'f3', state: FriendState.incoming, userId: 'kabir', name: 'Kabir'),
+    ];
     await openPeopleTab(t, twoPeople());
-    await t.scrollUntilVisible(onTab(find.text('Friends')), 200, scrollable: onTab(find.byType(Scrollable)).first);
-    await t.tap(onTab(find.text('Friends')));
-    await t.pumpAndSettle();
-    expect(find.text('Nobody yet.'), findsOneWidget);
+    final request = onTab(find.text('WANTS TO SPLIT WITH YOU · 1'));
+    expect(request, findsOneWidget);
+    expect(t.getRect(request).top, lessThan(t.getRect(onTab(find.text('YOU OWE'))).top));
+    expect(onTab(find.text('Accept')), findsOneWidget);
+  });
+
+  peopleTest('with no friends yet, it says so and offers an invite', (t) async {
+    FriendsService.debugFriends = const [];
+    await openPeopleTab(t, twoPeople());
+    await t.scrollUntilVisible(
+      onTab(find.text('Invite someone to Mull')),
+      200,
+      scrollable: onTab(find.byType(Scrollable)).first,
+    );
+    expect(onTab(find.textContaining('Nobody yet.')), findsOneWidget);
   });
 
   peopleTest('+ Add a friend asks for their email', (t) async {

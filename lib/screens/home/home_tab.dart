@@ -16,7 +16,6 @@ import '../groups/group_screen.dart';
 import '../groups/group_sheets.dart';
 import '../groups/icon_picker.dart';
 import '../groups/recurring_sheets.dart';
-import '../friends_sheet.dart';
 import '../people_sheet.dart';
 import 'home_shell.dart';
 import 'empty_home.dart';
@@ -87,12 +86,7 @@ class HomeTabPage extends StatelessWidget {
         for (final item in <Object>[...g.expenses, ...g.settlements]) (g, item),
     ]..sort((a, b) => newestFirst(ledgerMoment(a.$2), ledgerMoment(b.$2)));
 
-    final requests = FriendRequestsCard(
-      onOpenLedger: (id) {
-        final g = store.groupById(id);
-        if (g != null) open(g);
-      },
-    );
+    const requests = FriendRequestsCard();
 
     return MullPage(
       // Its own scroll position either side of empty: the last group going
@@ -105,14 +99,7 @@ class HomeTabPage extends StatelessWidget {
           ? [
               // A new user's first screen is this one, and the request is how
               // they get into the group they were added to.
-              EmptyHome(
-                onStart: onStart,
-                requests: requests,
-                onOpenLedger: (id) {
-                  final g = store.groupById(id);
-                  if (g != null) open(g);
-                },
-              ),
+              EmptyHome(onStart: onStart, requests: requests),
             ]
           : [
               _Headline(people: people),
@@ -590,11 +577,10 @@ class _WaitingClaimCard extends StatelessWidget {
 /// accepted the person who added you — that acceptance is the consent, and
 /// without it anyone who knew your address could hand you a debt. Which makes
 /// the request the first thing a new user needs to see, and it used to be a
-/// count inside the profile sheet.
+/// count inside the profile sheet. "See" goes to People, where requests sit
+/// at the top with Accept on the row.
 class FriendRequestsCard extends StatefulWidget {
-  const FriendRequestsCard({super.key, required this.onOpenLedger});
-
-  final void Function(String groupId) onOpenLedger;
+  const FriendRequestsCard({super.key});
 
   @override
   State<FriendRequestsCard> createState() => _FriendRequestsCardState();
@@ -607,11 +593,13 @@ class _FriendRequestsCardState extends State<FriendRequestsCard> with WidgetsBin
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    FriendsService.changes.addListener(_load);
     _load();
   }
 
   @override
   void dispose() {
+    FriendsService.changes.removeListener(_load);
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
@@ -661,10 +649,7 @@ class _FriendRequestsCardState extends State<FriendRequestsCard> with WidgetsBin
           InlineButton(
             'See',
             height: 48,
-            onTap: () async {
-              await showFriendsSheet(context, onOpenLedger: widget.onOpenLedger);
-              await _load();
-            },
+            onTap: () => HomeShellScope.maybeOf(context)?.select(HomeTab.people),
           ),
         ],
       ),

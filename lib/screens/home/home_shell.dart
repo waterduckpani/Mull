@@ -35,7 +35,9 @@ class HomeShellScope extends InheritedWidget {
 
   final ValueChanged<HomeTab> select;
 
-  static HomeShellScope of(BuildContext context) => context.dependOnInheritedWidgetOfExactType<HomeShellScope>()!;
+  static HomeShellScope of(BuildContext context) => maybeOf(context)!;
+
+  static HomeShellScope? maybeOf(BuildContext context) => context.dependOnInheritedWidgetOfExactType<HomeShellScope>();
 
   @override
   bool updateShouldNotify(HomeShellScope old) => false;
